@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1000-Yard Walk-Through Shooting Range</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #87b6d8; font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+  #distance {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(15,22,12,0.65); color: #eafbe0; padding: 8px 18px;
+    border-radius: 10px; font-size: 15px; letter-spacing: .3px;
+    border: 1px solid rgba(180,220,150,.25); backdrop-filter: blur(4px);
+    text-align: center; min-width: 220px;
+  }
+  #distance .big { font-size: 24px; font-weight: 700; color: #fff; }
+  #distance .sub { font-size: 12px; opacity: .8; }
+
+  #lookinfo {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, 40px);
+    color: #fff; font-size: 14px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.8);
+    text-align: center; opacity: 0; transition: opacity .15s;
+  }
+  #hitmsg {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -70px);
+    color: #ffe6a0; font-size: 19px; font-weight: 800; letter-spacing:.5px;
+    text-shadow: 0 2px 6px rgba(0,0,0,.9); text-align: center; opacity: 0;
+    transition: opacity .12s;
+  }
+  #hitmsg b { color:#fff; }
+  #hitmsg .sub { font-size: 12px; font-weight: 600; color:#cfe9bd; opacity:.9; margin-top:2px; }
+  #cross.hit::before, #cross.hit::after { background:#ff5b4d; }
+
+  /* ---- optics (aim down sights) ---- */
+  .optic { position:absolute; inset:0; display:none; z-index:6; pointer-events:none; }
+  #scope .scopeMask {
+    position:absolute; inset:0;
+    background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0 calc(38vmin - 1px), #060706 38vmin, #060706 100%);
+  }
+  #scope .edge {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:76vmin; height:76vmin; border-radius:50%;
+    box-shadow: 0 0 0 3px #0a0a0a, 0 0 42px 20px rgba(0,0,0,0.5) inset;
+  }
+  #scope .scopeRet {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:76vmin; height:76vmin;
+  }
+  #reddot .rdwin {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:50vmin; height:50vmin; border-radius:50%;
+    border:1px solid rgba(255,255,255,0.06);
+    box-shadow: inset 0 0 55px rgba(0,0,0,0.26);
+  }
+  #reddot .rddot {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:9px; height:9px; border-radius:50%; background:#ff2f2f;
+    box-shadow: 0 0 11px 3px rgba(255,45,45,0.85), 0 0 3px 1px rgba(255,160,160,0.9);
+  }
+  #opticlabel {
+    position:absolute; bottom:62px; left:50%; transform:translateX(-50%);
+    color:#dff3cf; font-size:12px; letter-spacing:1.5px; opacity:.9; z-index:7;
+    background:rgba(15,22,12,.55); padding:4px 14px; border-radius:8px; display:none;
+  }
+
+  /* crosshair */
+  #cross {
+    position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
+    transform: translate(-50%,-50%); opacity: .8;
+  }
+  #cross::before, #cross::after {
+    content:""; position:absolute; background:#fff; box-shadow:0 0 2px rgba(0,0,0,.6);
+  }
+  #cross::before { left:50%; top:0; width:2px; height:100%; transform:translateX(-50%); }
+  #cross::after  { top:50%; left:0; height:2px; width:100%; transform:translateY(-50%); }
+
+  /* minimap */
+  #minimap {
+    position: absolute; right: 14px; top: 14px;
+    background: rgba(15,22,12,0.62); border: 1px solid rgba(180,220,150,.3);
+    border-radius: 10px; padding: 8px; backdrop-filter: blur(4px);
+  }
+  #minimap canvas { border-radius: 6px; }
+  #minimap .mtitle { color:#cfe9bd; font-size:10px; letter-spacing:1px; text-align:center; margin-bottom:5px; text-transform:uppercase; }
+
+  /* distance-to-targets panel */
+  #ranges {
+    position: absolute; left: 14px; top: 14px;
+    background: rgba(15,22,12,0.62); border: 1px solid rgba(180,220,150,.3);
+    border-radius: 10px; padding: 8px 10px; backdrop-filter: blur(4px); min-width: 184px;
+  }
+  #ranges .rtitle { color:#cfe9bd; font-size:10px; letter-spacing:1px; text-transform:uppercase; text-align:center; margin-bottom:6px; }
+  #ranges .row { display:flex; justify-content:space-between; gap:12px; font-size:12px; color:#e8f6dd; padding:2px 4px; border-radius:4px; }
+  #ranges .row b { color:#fff; font-variant-numeric:tabular-nums; }
+  #ranges .row.near { background:rgba(110,166,63,0.4); }
+  #ranges .gun { color:#bfe6a4; font-size:10.5px; letter-spacing:.4px; margin-top:6px; text-align:center; border-top:1px solid rgba(180,220,150,.2); padding-top:5px; }
+
+  /* controls hint */
+  #hint {
+    position: absolute; left: 14px; bottom: 14px; color:#eafbe0;
+    background: rgba(15,22,12,0.55); padding: 10px 14px; border-radius: 10px;
+    font-size: 12.5px; line-height: 1.6; border: 1px solid rgba(180,220,150,.2);
+  }
+  #hint b { color:#fff; }
+  #hint .keys { color:#bfe6a4; font-weight:700; }
+
+  /* start overlay */
+  #overlay {
+    position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 35%, rgba(40,60,30,.55), rgba(8,12,6,.92));
+    color: #fff; text-align: center; cursor: pointer;
+  }
+  #overlay .card {
+    max-width: 540px; padding: 34px 40px; background: rgba(20,28,16,.7);
+    border: 1px solid rgba(180,220,150,.25); border-radius: 16px;
+  }
+  #overlay h1 { font-size: 26px; margin-bottom: 6px; letter-spacing: .5px; }
+  #overlay .tag { color:#bfe6a4; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 18px; }
+  #overlay p { font-size: 14.5px; line-height: 1.7; color:#dceccf; margin-bottom: 8px; }
+  #overlay .start { margin-top: 22px; display:inline-block; padding: 12px 28px; background:#6ea63f;
+    border-radius: 10px; font-weight: 700; font-size: 15px; letter-spacing:.5px; }
+  #overlay .small { font-size:12px; opacity:.7; margin-top:14px; }
+  kbd { background:#2c3a1f; border:1px solid #4d6633; border-radius:5px; padding:2px 7px; font-family:inherit; font-size:12px; color:#dff3cf; }
+  #loading { position: fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:60; background:#1a2410; color:#bfe6a4; font-size:15px; letter-spacing:1px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="loading">Building the range…</div>
+
+<div id="hud" style="display:none">
+  <div id="distance"></div>
+  <div id="ranges">
+    <div class="rtitle">Distance to Targets</div>
+    <div id="rlist"></div>
+    <div class="gun" id="rgun"></div>
+  </div>
+  <div id="cross"></div>
+  <div id="lookinfo"></div>
+  <div id="hitmsg"></div>
+  <div id="scope" class="optic">
+    <div class="scopeMask"></div>
+    <div class="edge"></div>
+    <svg class="scopeRet" id="scopeRet" viewBox="-20 -20 40 40" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <div id="reddot" class="optic">
+    <div class="rdwin"></div>
+    <div class="rddot"></div>
+  </div>
+  <div id="opticlabel"></div>
+  <div id="minimap">
+    <div class="mtitle">Range Map</div>
+    <canvas id="mmcanvas" width="150" height="300"></canvas>
+  </div>
+  <div id="hint">
+    <b>Move:</b> <span class="keys">W A S D</span> &nbsp; <b>Look:</b> mouse &nbsp; <b>Sprint:</b> <span class="keys">Shift</span> &nbsp; <b>Shoot:</b> left-click<br>
+    <b>Aim:</b> right-click or <span class="keys">F</span> &nbsp; <b>Scope zoom:</b> scroll wheel (rifle lines) &nbsp; <b>Release mouse:</b> <span class="keys">Esc</span><br>
+    <b>Jump to line:</b> <span class="keys">1</span>·300yd <span class="keys">2</span>·200yd <span class="keys">3</span>·100yd <span class="keys">4</span>·25yd <span class="keys">5</span>·10yd
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="card">
+    <div class="tag">Outdoor Rifle &amp; Pistol Range</div>
+    <h1>1000-Yard Walk-Through Range</h1>
+    <p>A realistic 60-ft-wide, 1000-yard range. Walk the firing lanes, move between the rifle and pistol firing lines, and look downrange at the steel. <b>Click to shoot</b> — hit the steel and listen for the ring travel back to you.</p>
+    <p style="opacity:.85;font-size:13px">Targets: Reduced C-Zone + Dueling Tree @300 (L) · Reduced C-Zone @400 (R) · C-Zone @500 (RoC) · Gong @600 (LoC) · Gong @800 (L) · Gong @1000 (R)</p>
+    <div class="start">▶ Click to Enter the Range</div>
+    <div class="small">Uses <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> + mouse look. Press <kbd>Esc</kbd> any time to free the cursor.</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ============================================================
+  //  UNITS:  1 world unit = 1 YARD.   Range width 60 ft = 20 yd.
+  //  Range runs along +Z (downrange).  Player starts at z=0.
+  // ============================================================
+  const YARD = 1;
+  const FT = 1 / 3;                 // 1 foot in yards
+  const IN = 1 / 36;                // 1 inch in yards
+  const RANGE_LEN = 1000;           // yards downrange
+  const HALF_W = 30 * FT;           // 30 ft each side => 60 ft total width
+
+  const scene = new THREE.Scene();
+  const SKY = 0x9ec6e2;
+  scene.background = new THREE.Color(SKY);
+  scene.fog = new THREE.Fog(SKY, 350, 3200);  // light haze; far steel stays visible
+
+  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2500);
+  const EYE = 5.6 * FT;             // ~5.6 ft eye height
+  camera.position.set(0, EYE, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.getElementById("app").appendChild(renderer.domElement);
+
+  // -------------------- Lighting --------------------
+  const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x4a5a32, 0.85);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff4e0, 1.05);
+  sun.position.set(-80, 160, 60);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 600;
+  sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
+  sun.shadow.camera.top = 60;   sun.shadow.camera.bottom = -60;
+  scene.add(sun);
+  const sunTarget = new THREE.Object3D();
+  scene.add(sunTarget);
+  sun.target = sunTarget;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+
+  // -------------------- Ground (grass) --------------------
+  function makeGrassTexture() {
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const g = c.getContext("2d");
+    g.fillStyle = "#4f7a32"; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 9000; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      const shade = Math.random();
+      let col;
+      if (shade < 0.33) col = "#3f6526";
+      else if (shade < 0.66) col = "#5c8c3a";
+      else col = "#6fa148";
+      g.fillStyle = col;
+      g.fillRect(x, y, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }
+  const grassTex = makeGrassTexture();
+  grassTex.repeat.set(60, 1200);
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(220, RANGE_LEN + 120, 1, 1),
+    new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, 0, RANGE_LEN / 2);
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // mowed firing-lane strip (slightly lighter, down the centre)
+  const laneTex = makeGrassTexture();
+  laneTex.repeat.set(8, 1200);
+  const lane = new THREE.Mesh(
+    new THREE.PlaneGeometry(HALF_W * 2, RANGE_LEN + 40, 1, 1),
+    new THREE.MeshStandardMaterial({ map: laneTex, roughness: 1, color: 0xbfe07f })
+  );
+  lane.rotation.x = -Math.PI / 2;
+  lane.position.set(0, 0.01, RANGE_LEN / 2);
+  lane.receiveShadow = true;
+  scene.add(lane);
+
+  // ground-fade ring far away so the plane edge isn't visible
+  // (fog already handles most of it)
+
+  // -------------------- Trees (hardwoods both sides) --------------------
+  const treeGroup = new THREE.Group();
+  scene.add(treeGroup);
+
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
+  const trunkMat2 = new THREE.MeshStandardMaterial({ color: 0x5a3d27, roughness: 1 });
+  const leafMats = [
+    new THREE.MeshStandardMaterial({ color: 0x3f6b2a, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x4f7d33, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x5d8a3a, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x6f9a45, roughness: 1 }),
+  ];
+  const trunkGeo = new THREE.CylinderGeometry(0.5, 0.8, 1, 6);
+  const blobGeo = new THREE.SphereGeometry(1, 6, 5);
+
+  function makeTree(x, z, scale) {
+    const t = new THREE.Group();
+    const h = (12 + Math.random() * 10) * FT * (scale || 1) * 3; // trunk height in yards
+    const trunk = new THREE.Mesh(trunkGeo, Math.random() < 0.5 ? trunkMat : trunkMat2);
+    trunk.scale.set(1, h, 1);
+    trunk.position.y = h / 2;
+    trunk.castShadow = true;
+    t.add(trunk);
+    const crownY = h;
+    const r = (4 + Math.random() * 3) * (scale || 1);
+    const nblobs = 4 + (Math.random() * 3 | 0);
+    for (let i = 0; i < nblobs; i++) {
+      const m = new THREE.Mesh(blobGeo, leafMats[(Math.random() * leafMats.length) | 0]);
+      const br = r * (0.6 + Math.random() * 0.5);
+      m.scale.setScalar(br);
+      m.position.set(
+        (Math.random() - 0.5) * r * 1.3,
+        crownY + (Math.random() - 0.2) * r * 0.9,
+        (Math.random() - 0.5) * r * 1.3
+      );
+      m.castShadow = true;
+      t.add(m);
+    }
+    t.position.set(x, 0, z);
+    t.rotation.y = Math.random() * Math.PI;
+    return t;
+  }
+
+  // tree line begins just past the lane edge and fills outward in depth bands
+  for (let z = -30; z < RANGE_LEN + 60; z += 7 + Math.random() * 9) {
+    for (let side = -1; side <= 1; side += 2) {
+      const bands = 3;
+      for (let b = 0; b < bands; b++) {
+        if (Math.random() < 0.25 && b > 0) continue;
+        const baseX = HALF_W + 4 + b * 9 + Math.random() * 6;
+        const x = side * baseX;
+        const sc = 0.8 + Math.random() * 0.8 + b * 0.15;
+        treeGroup.add(makeTree(x, z + (Math.random() - 0.5) * 6, sc));
+      }
+    }
+  }
+
+  // a few scattered bushes near the lane edges for ground detail
+  const bushGeo = new THREE.SphereGeometry(1, 5, 4);
+  for (let z = 0; z < RANGE_LEN; z += 18 + Math.random() * 25) {
+    for (let side = -1; side <= 1; side += 2) {
+      if (Math.random() < 0.5) continue;
+      const m = new THREE.Mesh(bushGeo, leafMats[(Math.random() * leafMats.length) | 0]);
+      const s = 0.8 + Math.random() * 1.2;
+      m.scale.set(s, s * 0.7, s);
+      m.position.set(side * (HALF_W + 1 + Math.random() * 2), s * 0.5, z);
+      m.castShadow = true;
+      treeGroup.add(m);
+    }
+  }
+
+  // ============================================================
+  //  TEXT LABEL SPRITES
+  // ============================================================
+  function makeLabel(text, opts) {
+    opts = opts || {};
+    const pad = 16, fs = opts.fontSize || 44;
+    const c = document.createElement("canvas");
+    const ctx = c.getContext("2d");
+    ctx.font = "700 " + fs + "px -apple-system, Segoe UI, Roboto, sans-serif";
+    const tw = ctx.measureText(text).width;
+    c.width = tw + pad * 2; c.height = fs + pad * 1.4;
+    const g = c.getContext("2d");
+    g.font = "700 " + fs + "px -apple-system, Segoe UI, Roboto, sans-serif";
+    g.fillStyle = opts.bg || "rgba(20,28,16,0.82)";
+    roundRect(g, 0, 0, c.width, c.height, 14); g.fill();
+    g.strokeStyle = opts.border || "rgba(190,230,164,0.6)"; g.lineWidth = 3;
+    roundRect(g, 1.5, 1.5, c.width - 3, c.height - 3, 13); g.stroke();
+    g.fillStyle = opts.color || "#eafbe0";
+    g.textBaseline = "middle"; g.textAlign = "center";
+    g.fillText(text, c.width / 2, c.height / 2 + 2);
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false }));
+    const scaleY = (opts.worldHeight || 1.4);
+    spr.scale.set(scaleY * (c.width / c.height), scaleY, 1);
+    return spr;
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ============================================================
+  //  TARGETS
+  // ============================================================
+  const targetMeshes = [];   // for raycast / "look" info
+  const targets = [];        // {name, x, z, color} for minimap
+  const hittables = [];      // {mesh, x, z, size, onHit, update} reactive steel
+  function registerHit(mesh, x, z, size, onHit, update) {
+    const e = { mesh: mesh, x: x, z: z, size: size, onHit: onHit, update: update };
+    mesh.userData.hittable = e;
+    hittables.push(e);
+    return e;
+  }
+
+  // ---- USPSA "C-Zone" silhouette, sized to width W x height H (inches) ----
+  function czoneShape(W, H) {
+    const hw = (W / 2) * IN, ht = H * IN;   // half-width & height in yards
+    // normalized outline: xN in [-1,1] = fraction of half-width, yN in [0,1] = height
+    const pts = [
+      [0, 0], [0.444, 0.0667], [0.778, 0.20], [0.944, 0.40], [1.0, 0.80],
+      [0.333, 0.80], [0.333, 1.0], [-0.333, 1.0], [-0.333, 0.80], [-1.0, 0.80],
+      [-0.944, 0.40], [-0.778, 0.20], [-0.444, 0.0667], [0, 0]
+    ];
+    const shape = new THREE.Shape();
+    shape.moveTo(pts[0][0] * hw, pts[0][1] * ht);
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0] * hw, pts[i][1] * ht);
+    return shape;
+  }
+
+  const steelWhite = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.55, metalness: 0.25, side: THREE.DoubleSide });
+  const steelGray = new THREE.MeshStandardMaterial({ color: 0xb9bdc2, roughness: 0.5, metalness: 0.55, side: THREE.DoubleSide });
+  const tanMat = new THREE.MeshStandardMaterial({ color: 0xc4a878, roughness: 0.7, metalness: 0.2 });
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0xa9885a, roughness: 0.95 });
+  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.6, metalness: 0.6 });
+
+  // C-Zone target on a stand.  full => 12"x24" silhouette, reduced => 8"x16"
+  function makeCZone(x, z, full, faceMinus) {
+    // faceMinus: true => target faces -Z (toward the shooter at lower z)
+    const g = new THREE.Group();
+    const W = full ? 12 : 8;             // silhouette width (inches)
+    const H = full ? 24 : 16;            // silhouette height (inches)
+    const baseH = 32 * IN;              // silhouette bottom ~32" off the ground
+
+    // pivot at the base so the silhouette can rock back when hit
+    const pivot = new THREE.Group();
+    pivot.position.y = baseH;
+    g.add(pivot);
+
+    const geo = new THREE.ExtrudeGeometry(czoneShape(W, H), { depth: 0.5 * IN, bevelEnabled: false });
+    const sil = new THREE.Mesh(geo, steelWhite);
+    sil.castShadow = true;
+    pivot.add(sil);
+
+    // two mounting holes (dark dots near top)
+    const holeGeo = new THREE.CircleGeometry(0.6 * IN, 10);
+    for (const hx of [-1, 1]) {
+      const hole = new THREE.Mesh(holeGeo, darkMetal);
+      hole.position.set(hx * 0.16 * W * IN, 0.88 * H * IN, 0.4 * IN);
+      pivot.add(hole);
+    }
+
+    // ---- hostage / no-shoot plate (reduced targets only): a small ~5" plate on an
+    //      arm that pivots around the post and flips side-to-side, like a dueling tree ----
+    if (!full) {
+      const armY = baseH + 0.9 * H * IN;           // up near the top of the silhouette
+      const armLen = (W / 2 + 5) * IN;             // reach out past the silhouette
+
+      const hp = new THREE.Group();                // vertical-axis pivot at the post top
+      hp.position.set(0, armY, 0);
+      hp.rotation.y = Math.PI;                      // start swung to the LEFT
+      g.add(hp);
+
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(armLen, 0.8 * IN, 0.8 * IN), darkMetal);
+      arm.position.set(armLen / 2, 0, 0);
+      hp.add(arm);
+
+      const sq = 5.5 * IN, ch = 0.7 * IN;          // ~5.5" square hit plate, rounded corners
+      const half = sq / 2;
+      const hs = new THREE.Shape();                // built hanging from y=0 down to -sq
+      hs.moveTo(-half + ch, 0);
+      hs.lineTo(half - ch, 0);
+      hs.lineTo(half, -ch);
+      hs.lineTo(half, -sq + ch);
+      hs.lineTo(half - ch, -sq);
+      hs.lineTo(-half + ch, -sq);
+      hs.lineTo(-half, -sq + ch);
+      hs.lineTo(-half, -ch);
+      hs.lineTo(-half + ch, 0);
+      const hgeo = new THREE.ExtrudeGeometry(hs, { depth: 0.4 * IN, bevelEnabled: false });
+      const plate = new THREE.Mesh(hgeo, steelWhite);
+      plate.position.set(armLen, 0, 0);            // out at the end of the arm
+      plate.castShadow = true;
+      plate.userData.name = "Hostage plate · " + z + " yd";
+      hp.add(plate);
+      targetMeshes.push(plate);
+
+      // flip across to the opposite side on each hit, then settle (bistable, like a dueling tree)
+      const hst = { target: Math.PI, cur: Math.PI };
+      registerHit(plate, x, z, "paddle", function () {
+        hst.target += Math.PI;                      // swing to the other side and stay
+      }, function (dt) {
+        hst.cur += (hst.target - hst.cur) * Math.min(1, dt * 9);
+        hp.rotation.y = hst.cur;
+      });
+    }
+
+    // stand post + feet
+    const postH = baseH;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(2 * IN, postH, 2 * IN), tanMat);
+    post.position.y = postH / 2; post.castShadow = true; g.add(post);
+    const footL = 1.6 * YARD * 0.5;
+    const foot1 = new THREE.Mesh(new THREE.BoxGeometry(2.4 * IN, 1.5 * IN, footL), tanMat);
+    foot1.position.set(0, 0.7 * IN, 0); foot1.castShadow = true; g.add(foot1);
+    const foot2 = new THREE.Mesh(new THREE.BoxGeometry(footL, 1.5 * IN, 2.4 * IN), tanMat);
+    foot2.position.set(0, 0.7 * IN, 0); g.add(foot2);
+
+    g.position.set(x, 0, z);
+    if (faceMinus) g.rotation.y = Math.PI; // face back toward shooter
+    scene.add(g);
+    const nm = (full ? "C-Zone" : "Reduced C-Zone") + " · " + z + " yd";
+    sil.userData.name = nm;
+    targetMeshes.push(sil);
+    targets.push({ name: nm, tag: (full ? "C-Zone " : "Red. C-Zone ") + z, x: x, z: z, color: "#ffffff" });
+
+    // reactive: rock back on hit, spring upright
+    const st = { v: 0, a: 0 };
+    registerHit(sil, x, z, full ? "czone" : "czone-r", function () {
+      st.v += 4.5;
+    }, function (dt) {
+      st.v += (-70 * st.a - 7 * st.v) * dt;
+      st.a += st.v * dt;
+      pivot.rotation.x = st.a * 0.13;
+    });
+    return g;
+  }
+
+  // ---- Dueling Tree ----
+  function makeDuelingTree(x, z) {
+    const g = new THREE.Group();
+    const postH = 5 * FT;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(1.6 * IN, 1.6 * IN, postH, 10), darkMetal);
+    post.position.y = postH / 2; post.castShadow = true; g.add(post);
+    // base feet
+    const base = new THREE.Mesh(new THREE.BoxGeometry(2 * FT, 1.5 * IN, 0.4 * FT), tanMat);
+    base.position.y = 0.7 * IN; g.add(base);
+    const base2 = new THREE.Mesh(new THREE.BoxGeometry(0.4 * FT, 1.5 * IN, 2 * FT), tanMat);
+    base2.position.y = 0.7 * IN; g.add(base2);
+    // 6 round paddles on arms that swing around the central post
+    const padGeo = new THREE.CylinderGeometry(3 * IN, 3 * IN, 0.6 * IN, 16);
+    const armLen = 4.5 * IN;
+    for (let i = 0; i < 6; i++) {
+      const startSide = (i % 2 === 0) ? 0 : Math.PI;
+      const yy = 1.4 * FT + i * (postH - 1.6 * FT) / 6;
+      const pv = new THREE.Group();
+      pv.position.set(0, yy, 0);
+      pv.rotation.y = startSide;
+      g.add(pv);
+      const pad = new THREE.Mesh(padGeo, steelWhite);
+      pad.rotation.x = Math.PI / 2;
+      pad.position.set(armLen, 0, 0.5 * IN);
+      pad.castShadow = true;
+      pad.userData.name = "Dueling Tree · 300 yd";
+      pv.add(pad);
+      targetMeshes.push(pad);
+      const st = { target: startSide, cur: startSide };
+      registerHit(pad, x, z, "paddle", function () {
+        st.target += Math.PI;   // flip to the other side
+      }, function (dt) {
+        st.cur += (st.target - st.cur) * Math.min(1, dt * 8);
+        pv.rotation.y = st.cur;
+      });
+    }
+    g.position.set(x, 0, z);
+    scene.add(g);
+    targets.push({ name: "Dueling Tree", tag: "Dueling Tree 300", x: x, z: z, color: "#ffe28a" });
+    return g;
+  }
+
+  // ---- Gong target: A-frame holding hanging square steel plates ----
+  function makeGong(x, z, plates, label) {
+    // plates: array of inches (square side), hung side by side
+    const g = new THREE.Group();
+    const topH = 5.2 * FT;
+    const spread = 2.4 * FT;
+    // two A-frame legs (front pair + back pair simplified as angled posts)
+    const legGeo = new THREE.CylinderGeometry(1.4 * IN, 1.4 * IN, topH * 1.15, 8);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const leg = new THREE.Mesh(legGeo, woodMat);
+        leg.position.set(sx * spread, topH / 2, sz * 0.9 * FT);
+        leg.rotation.z = sx * 0.16;
+        leg.rotation.x = -sz * 0.12;
+        leg.castShadow = true;
+        g.add(leg);
+      }
+    }
+    // top cross bar
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(1.5 * IN, 1.5 * IN, spread * 2 + 0.6 * FT, 8), woodMat);
+    bar.rotation.z = Math.PI / 2;
+    bar.position.y = topH;
+    bar.castShadow = true;
+    g.add(bar);
+
+    // hanging plates (each on a pivot at the bar so it swings like a pendulum)
+    const total = plates.length;
+    plates.forEach((side, i) => {
+      const sz = side * IN;
+      const offset = (i - (total - 1) / 2) * (spread * 1.1);
+      const pivotY = topH - 0.35 * FT;
+      const pv = new THREE.Group();
+      pv.position.set(offset, pivotY, 0);
+      g.add(pv);
+      const chainLen = 0.7 * FT;
+      for (const cxo of [-sz * 0.3, sz * 0.3]) {
+        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * IN, 0.35 * IN, chainLen, 5), darkMetal);
+        chain.position.set(cxo, -chainLen / 2, 0);
+        pv.add(chain);
+      }
+      const plateThk = 0.6 * IN;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, plateThk), steelGray);
+      plate.position.set(0, -chainLen - sz / 2, 0);
+      plate.castShadow = true;
+      plate.userData.name = 'Gong ' + side + '" · ' + label;
+      pv.add(plate);
+      targetMeshes.push(plate);
+      const st = { v: 0, a: 0 };
+      registerHit(plate, x, z, side >= 12 ? "biggong" : "gong", function () {
+        st.v += 8.0;
+      }, function (dt) {
+        st.v += (-24 * st.a - 1.3 * st.v) * dt;   // damped pendulum
+        st.a += st.v * dt;
+        pv.rotation.x = st.a;
+      });
+    });
+
+    g.position.set(x, 0, z);
+    scene.add(g);
+    targets.push({ name: "Gong · " + label, tag: "Gong " + parseInt(label, 10), x: x, z: z, color: "#cfd6dc" });
+    return g;
+  }
+
+  // -------------------- Place all targets --------------------
+  // (x: negative = left, positive = right.  Lanes span +/-10 yd)
+  const L = -7, R = 7, LoC = -3, RoC = 3;
+
+  makeCZone(L, 300, false, true);           // reduced C-Zone, 300 left
+  makeDuelingTree(L + 3, 300);              // dueling tree beside it
+  makeCZone(R, 400, false, true);           // reduced C-Zone, 400 right
+  makeCZone(RoC, 500, true, true);          // full C-Zone, 500 right-of-centre
+  makeGong(LoC, 600, [14, 10], "600 yd");   // gong, 600 left-of-centre, 10" + 14"
+  makeGong(L, 800, [14, 10], "800 yd");     // gong, 800 left
+  makeGong(R, 1000, [14, 10], "1000 yd");   // gong, 1000 right
+
+  // Text painted FLAT on the grass (lying down so it never blocks anything
+  // downrange). Reads naturally as you walk toward it.
+  function groundDecal(x, z, txt, opts) {
+    opts = opts || {};
+    const fs = opts.fs || 64, pad = 28;
+    const c = document.createElement("canvas");
+    let ctx = c.getContext("2d");
+    ctx.font = "800 " + fs + "px -apple-system, Segoe UI, Roboto, sans-serif";
+    const tw = ctx.measureText(txt).width;
+    c.width = Math.ceil(tw + pad * 2);
+    c.height = Math.ceil(fs + pad * 1.4);
+    ctx = c.getContext("2d");
+    ctx.font = "800 " + fs + "px -apple-system, Segoe UI, Roboto, sans-serif";
+    ctx.fillStyle = opts.bg || "rgba(14,20,11,0.82)";
+    roundRect(ctx, 0, 0, c.width, c.height, 20); ctx.fill();
+    ctx.strokeStyle = opts.border || "rgba(255,210,120,0.9)"; ctx.lineWidth = 6;
+    roundRect(ctx, 4, 4, c.width - 8, c.height - 8, 17); ctx.stroke();
+    ctx.fillStyle = opts.color || "#fff";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(txt, c.width / 2, c.height / 2 + 3);
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    const h = opts.h || 3.4;             // yards tall when read from downrange
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(h * c.width / c.height, h),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+    );
+    mesh.rotation.set(-Math.PI / 2, 0, Math.PI);
+    mesh.position.set(x, 0.06, z);
+    scene.add(mesh);
+    return mesh;
+  }
+  // yardage marker on the grass just in front of each target
+  function yardSign(x, z, txt, col) {
+    groundDecal(x, z - 5, txt, { color: col || "#fff", border: "rgba(255,210,120,0.9)" });
+  }
+  yardSign(L, 300, "300 YD", "#fff");
+  yardSign(R, 400, "400 YD", "#fff");
+  yardSign(RoC, 500, "500 YD", "#fff");
+  yardSign(LoC, 600, "600 YD", "#cfd6dc");
+  yardSign(L, 800, "800 YD", "#cfd6dc");
+  yardSign(R, 1000, "1000 YD", "#cfd6dc");
+
+  // ============================================================
+  //  SHOOTING / FIRING LINES
+  //  Measured from the FIRST reduced C-Zone (z = 300).
+  //   300 yd from target -> z = 0   (rifle)
+  //   200 yd from target -> z = 100 (rifle)
+  //   100 yd from target -> z = 200 (rifle)
+  //    25 yd from target -> z = 275 (pistol)
+  //    10 yd from target -> z = 290 (pistol)
+  // ============================================================
+  const FIRST_TARGET_Z = 300;
+  const firingLines = [
+    { dist: 300, z: 0,   gun: "RIFLE" },
+    { dist: 200, z: 100, gun: "RIFLE" },
+    { dist: 100, z: 200, gun: "RIFLE" },
+    { dist: 25,  z: 275, gun: "PISTOL" },
+    { dist: 10,  z: 290, gun: "PISTOL" },
+  ];
+
+  const lineMatRifle = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const lineMatPistol = new THREE.MeshStandardMaterial({ color: 0xffd24d, roughness: 1 });
+
+  firingLines.forEach(fl => {
+    const isPistol = fl.gun === "PISTOL";
+    // painted line across the lane
+    const strip = new THREE.Mesh(
+      new THREE.PlaneGeometry(HALF_W * 2, 0.6 * YARD),
+      isPistol ? lineMatPistol : lineMatRifle
+    );
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(0, 0.03, fl.z);
+    scene.add(strip);
+
+    // small posts at each end of the line
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(1.5 * IN, 1.5 * IN, 3 * FT, 6),
+        isPistol ? new THREE.MeshStandardMaterial({ color: 0xc79a2e }) : new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+      post.position.set(sx * (HALF_W - 0.3), 1.5 * FT, fl.z);
+      post.castShadow = true;
+      scene.add(post);
+    }
+
+    // flat marker painted on the firing line itself (no longer blocks downrange)
+    const txt = fl.dist + " YD · " + fl.gun;
+    groundDecal(0, fl.z + 2.6, txt, {
+      h: 3.0,
+      color: isPistol ? "#fff1c2" : "#ffffff",
+      bg: isPistol ? "rgba(70,52,8,0.82)" : "rgba(14,20,11,0.82)",
+      border: isPistol ? "rgba(255,210,77,0.95)" : "rgba(235,255,210,0.85)"
+    });
+  });
+
+  // ============================================================
+  //  FIRST-PERSON CONTROLS  (WASD + pointer-lock mouse look)
+  // ============================================================
+  const overlay = document.getElementById("overlay");
+  const hud = document.getElementById("hud");
+  const keys = {};
+  let locked = false;       // pointer-lock active
+  let entered = false;      // user has entered the range
+  let dragging = false;     // fallback look (mouse held) when not locked
+  let aimHold = false;      // right-mouse held => aiming
+  let aimToggle = false;    // F key toggle => aiming
+  let scopeZoom = 6;        // rifle scope magnification (3x – 16x)
+  let yaw = 0, pitch = 0;   // radians
+  const player = { x: 0, z: 0 };
+  const canvas = renderer.domElement;
+  const BASE_FOV = 70;
+  let lookSens = 0.0022;
+
+  // Entering the range is decoupled from pointer-lock so the overlay always
+  // clears, even if the browser refuses the lock.
+  function enterRange() {
+    if (!entered) {
+      entered = true;
+      overlay.style.display = "none";
+      hud.style.display = "block";
+      initAudio();
+    }
+    const p = canvas.requestPointerLock && canvas.requestPointerLock();
+    if (p && p.catch) p.catch(function () { /* lock blocked: drag-look fallback */ });
+  }
+  overlay.addEventListener("click", enterRange);
+
+  document.addEventListener("pointerlockchange", function () {
+    locked = document.pointerLockElement === canvas;
+  });
+
+  // Which firearm/optic applies at the player's current downrange position
+  function nearestGun() {
+    let best = "RIFLE", bd = Infinity;
+    for (let i = 0; i < firingLines.length; i++) {
+      const d = Math.abs(firingLines[i].z - player.z);
+      if (d < bd) { bd = d; best = firingLines[i].gun; }
+    }
+    return best;
+  }
+
+  // Click: left = shoot, right = aim down sights. Re-grab cursor if released.
+  canvas.addEventListener("mousedown", function (e) {
+    if (!entered) return;
+    if (e.button === 0) shoot();
+    if (e.button === 2) aimHold = true;
+    if (!locked) { dragging = true; canvas.requestPointerLock && canvas.requestPointerLock(); }
+  });
+  window.addEventListener("mouseup", function (e) {
+    dragging = false;
+    if (e.button === 2) aimHold = false;
+  });
+  canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // Scroll wheel zooms the rifle scope (and engages it if not already aiming).
+  canvas.addEventListener("wheel", function (e) {
+    if (!entered || nearestGun() !== "RIFLE") return;
+    e.preventDefault();
+    if (!aimHold && !aimToggle) aimToggle = true;
+    scopeZoom *= (e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    scopeZoom = Math.max(3, Math.min(32, scopeZoom));
+  }, { passive: false });
+
+  document.addEventListener("mousemove", function (e) {
+    if (!entered) return;
+    if (!locked && !dragging) return;     // when unlocked, only look while dragging
+    yaw -= e.movementX * lookSens;
+    pitch -= e.movementY * lookSens;
+    const lim = Math.PI / 2 - 0.05;
+    pitch = Math.max(-lim, Math.min(lim, pitch));
+  });
+
+  addEventListener("keydown", function (e) {
+    keys[e.code] = true;
+    if (e.code === "KeyF") aimToggle = !aimToggle;
+    const map = { Digit1: 0, Digit2: 100, Digit3: 200, Digit4: 275, Digit5: 290 };
+    if (e.code in map) { player.z = map[e.code]; player.x = 0; }
+  });
+  addEventListener("keyup", function (e) { keys[e.code] = false; });
+
+  const scopeEl = document.getElementById("scope");
+  const reddotEl = document.getElementById("reddot");
+  const opticLabel = document.getElementById("opticlabel");
+  const scopeRet = document.getElementById("scopeRet");
+
+  // ---- Ballistic holdover ----------------------------------------------
+  // 6.5 Creedmoor · 140 gr · 2650 fps muzzle · G1 BC 0.58 · 100-yd zero
+  // (mil drop below line of sight, from numeric trajectory solve)
+  const HOLD_TABLE = [
+    [100, 0.00], [200, 0.53], [300, 1.30], [400, 2.19], [500, 3.18],
+    [600, 4.29], [700, 5.51], [800, 6.87], [900, 8.38], [1000, 10.05]
+  ];
+  function holdMil(yd) {
+    if (yd <= 100) return 0;
+    for (let i = 1; i < HOLD_TABLE.length; i++) {
+      if (yd <= HOLD_TABLE[i][0]) {
+        const a = HOLD_TABLE[i - 1], b = HOLD_TABLE[i];
+        return a[1] + (b[1] - a[1]) * (yd - a[0]) / (b[0] - a[0]);
+      }
+    }
+    const a = HOLD_TABLE[HOLD_TABLE.length - 2], b = HOLD_TABLE[HOLD_TABLE.length - 1];
+    return b[1] + (b[1] - a[1]) * (yd - b[0]) / (b[0] - a[0]);
+  }
+
+  // ---- First-focal-plane mil reticle (built once, scaled per zoom) ------
+  (function buildReticle() {
+    const NS = "http://www.w3.org/2000/svg";
+    function line(x1, y1, x2, y2, w) {
+      const l = document.createElementNS(NS, "line");
+      l.setAttribute("x1", x1); l.setAttribute("y1", y1);
+      l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+      l.setAttribute("stroke", "#141414");
+      l.setAttribute("stroke-width", w || 1.1);
+      l.setAttribute("vector-effect", "non-scaling-stroke");
+      scopeRet.appendChild(l);
+    }
+    function dot(x, y, r) {
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", r);
+      c.setAttribute("fill", "#141414"); scopeRet.appendChild(c);
+    }
+    function txt(x, y, s, size) {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", x); t.setAttribute("y", y);
+      t.setAttribute("font-size", size); t.setAttribute("fill", "#161616");
+      t.setAttribute("font-family", "monospace"); t.setAttribute("font-weight", "700");
+      t.setAttribute("dominant-baseline", "middle"); t.textContent = s;
+      scopeRet.appendChild(t);
+    }
+    // main crosshair with center gap (units = milliradians)
+    line(0, -40, 0, -0.35, 1.0); line(0, 0.35, 0, 40, 1.1);
+    line(-40, 0, -0.35, 0, 1.0); line(0.35, 0, 40, 0, 1.0);
+
+    // ELEVATION: a hash every 1 mil BELOW center, numbered in mils (holdover).
+    // Read the "hold X.X mil" value, then place that mil mark on the target.
+    for (let m = 1; m <= 12; m++) {
+      line(-0.5, m, 0.5, m, 1.0);                 // full 1-mil hash
+      txt(0.72, m, String(m), 0.6);               // mil label
+      if (m <= 11) line(-0.22, m + 0.5, 0.22, m + 0.5, 0.8); // 0.5-mil minor tick
+    }
+    // a couple of reference hashes above center
+    for (let m = 1; m <= 2; m++) line(-0.4, -m, 0.4, -m, 0.9);
+
+    // WINDAGE: 1-mil hashes left/right, numbered at evens
+    for (let m = 1; m <= 8; m++) {
+      line(m, -0.4, m, 0.4, 0.9);
+      line(-m, -0.4, -m, 0.4, 0.9);
+      if (m % 2 === 0) { txt(m - 0.16, 0.92, String(m), 0.48); txt(-m - 0.16, 0.92, String(m), 0.48); }
+    }
+    dot(0, 0, 0.07);
+  })();
+
+  // keep 1 mil == 1 milliradian on target, regardless of zoom (FFP behaviour)
+  function updateReticleScale() {
+    const elH = scopeRet.clientHeight || 1;
+    const milsH = (elH / window.innerHeight) * camera.fov * 17.4533; // fov is vertical deg
+    const milsW = milsH * (scopeRet.clientWidth / elH);
+    scopeRet.setAttribute("viewBox",
+      (-milsW / 2) + " " + (-milsH / 2) + " " + milsW + " " + milsH);
+  }
+
+  // ============================================================
+  //  AUDIO  (synthesized — gunshot + distance-aware steel ring)
+  // ============================================================
+  let actx = null, masterGain = null;
+  function initAudio() {
+    if (actx) { if (actx.state === "suspended") actx.resume(); return; }
+    try {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = actx.createGain();
+      masterGain.gain.value = 0.85;
+      masterGain.connect(actx.destination);
+    } catch (err) { actx = null; }
+  }
+  function noiseBuffer(dur) {
+    const n = Math.max(1, Math.floor(actx.sampleRate * dur));
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+  function playGunshot() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const src = actx.createBufferSource();
+    src.buffer = noiseBuffer(0.3);
+    const hp = actx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 550;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.9, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.03, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    src.connect(hp).connect(g).connect(masterGain);
+    const osc = actx.createOscillator(); osc.type = "sine";
+    osc.frequency.setValueAtTime(130, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    const og = actx.createGain();
+    og.gain.setValueAtTime(0.55, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    osc.connect(og).connect(masterGain);
+    src.start(t); src.stop(t + 0.32);
+    osc.start(t); osc.stop(t + 0.24);
+  }
+  const SOUND_SPEED = 375; // yards/sec (~343 m/s)
+  function playDing(dist, baseFreq) {
+    if (!actx) return;
+    const delay = Math.min(dist / SOUND_SPEED, 4);
+    const t = actx.currentTime + delay;
+    const vol = Math.max(0.05, Math.min(1, 28 / (dist + 10)));
+    const cutoff = 1100 + 9000 * Math.max(0, 1 - dist / 750); // far = duller
+    const out = actx.createGain(); out.gain.value = vol;
+    const lp = actx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = cutoff;
+    out.connect(lp).connect(masterGain);
+    const partials = [1, 2.01, 2.74, 3.76, 5.1];
+    partials.forEach(function (p, i) {
+      const o = actx.createOscillator();
+      o.type = i === 0 ? "triangle" : "sine";
+      o.frequency.value = baseFreq * p;
+      const g = actx.createGain();
+      const peak = i === 0 ? 0.5 : 0.22 / (i + 1);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55 + (5 - i) * 0.11);
+      o.connect(g).connect(out);
+      o.start(t); o.stop(t + 1.5);
+    });
+    const src = actx.createBufferSource(); src.buffer = noiseBuffer(0.05);
+    const ng = actx.createGain();
+    ng.gain.setValueAtTime(vol * 0.5, t);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    const hp = actx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2200;
+    src.connect(hp).connect(ng).connect(out);
+    src.start(t); src.stop(t + 0.06);
+  }
+  function kindFreq(k) {
+    if (k === "biggong") return 300;   // 14" plate — low gong
+    if (k === "gong") return 460;      // 10" plate
+    if (k === "paddle") return 720;    // small round dueling-tree paddle
+    if (k === "czone-r") return 560;   // reduced C-zone
+    return 500;                        // full C-zone
+  }
+
+  // ============================================================
+  //  SHOOTING
+  // ============================================================
+  const hitMsg = document.getElementById("hitmsg");
+  const crossEl = document.getElementById("cross");
+  let hitMsgT = 0, crossT = 0;
+  const WORLD_UP = new THREE.Vector3(0, 1, 0);
+  const _O = new THREE.Vector3(), _D = new THREE.Vector3();
+  const _prev = new THREE.Vector3(), _cur = new THREE.Vector3(), _seg = new THREE.Vector3();
+
+  function shoot() {
+    playGunshot();
+    crossEl.classList.add("hit"); crossT = 0.12;
+
+    const rifle = nearestGun() === "RIFLE";
+    let obj = null, point = null, dist = 0;
+
+    if (!rifle) {
+      // PISTOL: flat — point of aim is point of impact at these short ranges
+      raycaster.setFromCamera(screenCenter, camera);
+      const hits = raycaster.intersectObjects(targetMeshes, false);
+      if (hits.length) { obj = hits[0].object; point = hits[0].point; dist = hits[0].distance; }
+    } else {
+      // RIFLE: march the bullet along the line of sight while gravity drops it
+      // (same 100-yd-zero dope as the reticle) — you must hold the right mil over.
+      camera.getWorldDirection(_D);
+      _O.copy(camera.position);
+      _prev.copy(_O);
+      const step = 3, maxR = 1150;             // yards
+      for (let r = step; r <= maxR; r += step) {
+        const dropY = r * holdMil(r) / 1000;   // yards below line of sight at range r
+        _cur.copy(_O).addScaledVector(_D, r).addScaledVector(WORLD_UP, -dropY);
+        _seg.copy(_cur).sub(_prev);
+        const segLen = _seg.length();
+        raycaster.set(_prev, _seg.normalize());
+        raycaster.far = segLen;
+        const hits = raycaster.intersectObjects(targetMeshes, false);
+        if (hits.length) {
+          obj = hits[0].object;
+          point = hits[0].point.clone();
+          dist = _O.distanceTo(point);
+          break;
+        }
+        _prev.copy(_cur);
+      }
+      raycaster.far = Infinity;                 // reset for the per-frame look raycast
+    }
+
+    if (!obj) {
+      // clean miss — usually because you held center instead of holding over
+      hitMsg.innerHTML = '<span style="color:#ffb4a0">✗ miss — hold over for the range</span>';
+      hitMsg.style.opacity = "1"; hitMsgT = 0.9;
+      return;
+    }
+    const e = obj.userData.hittable;
+    if (!e) return;
+    e.onHit(point);
+    playDing(dist, kindFreq(e.size));
+    hitMsg.innerHTML = '✦ HIT &nbsp;<b>' + (obj.userData.name || "steel") + '</b>' +
+      '<div class="sub">' + Math.round(dist) + ' yd · ring back in ' + (dist / SOUND_SPEED).toFixed(1) + ' s</div>';
+    hitMsg.style.opacity = "1"; hitMsgT = 1.4;
+  }
+
+  // ============================================================
+  //  MINIMAP
+  // ============================================================
+  const mm = document.getElementById("mmcanvas");
+  const mctx = mm.getContext("2d");
+  const MM_W = mm.width, MM_H = mm.height;
+  const PAD = 10;
+  // NOTE: the camera looks down +Z, so world +X is on the player's LEFT.
+  // Flip X here so the map's left/right matches what you see downrange.
+  function mapX(x) { return MM_W / 2 - (x / (HALF_W * 1.25)) * (MM_W / 2 - PAD); }
+  function mapZ(z) { return MM_H - PAD - (z / RANGE_LEN) * (MM_H - PAD * 2); }
+
+  function drawMinimap() {
+    mctx.clearRect(0, 0, MM_W, MM_H);
+    // lane
+    mctx.fillStyle = "rgba(110,150,70,0.35)";
+    mctx.fillRect(mapX(-HALF_W), mapZ(RANGE_LEN), mapX(HALF_W) - mapX(-HALF_W), mapZ(0) - mapZ(RANGE_LEN));
+    // firing lines
+    firingLines.forEach(fl => {
+      mctx.strokeStyle = fl.gun === "PISTOL" ? "#ffd24d" : "#ffffff";
+      mctx.lineWidth = 1.5;
+      mctx.beginPath();
+      mctx.moveTo(mapX(-HALF_W), mapZ(fl.z));
+      mctx.lineTo(mapX(HALF_W), mapZ(fl.z));
+      mctx.stroke();
+    });
+    // targets
+    targets.forEach(t => {
+      mctx.fillStyle = t.color;
+      mctx.beginPath();
+      mctx.arc(mapX(t.x), mapZ(t.z), 3.2, 0, 7);
+      mctx.fill();
+      mctx.strokeStyle = "rgba(0,0,0,.6)"; mctx.lineWidth = 1; mctx.stroke();
+    });
+    // player
+    const px = mapX(player.x), pz = mapZ(player.z);
+    mctx.save();
+    mctx.translate(px, pz);
+    mctx.rotate(-yaw); // yaw 0 = looking +z (up on map)
+    mctx.fillStyle = "#ff5b4d";
+    mctx.beginPath();
+    mctx.moveTo(0, -7); mctx.lineTo(5, 6); mctx.lineTo(-5, 6); mctx.closePath();
+    mctx.fill();
+    mctx.restore();
+    // yard ticks
+    mctx.fillStyle = "rgba(255,255,255,.55)";
+    mctx.font = "8px sans-serif";
+    [0, 250, 500, 750, 1000].forEach(z => {
+      mctx.fillText(z + "", 2, mapZ(z) + 3);
+    });
+  }
+
+  // ============================================================
+  //  HUD UPDATES (distance + look target)
+  // ============================================================
+  const distEl = document.getElementById("distance");
+  const lookEl = document.getElementById("lookinfo");
+  const rlistEl = document.getElementById("rlist");
+  const rgunEl = document.getElementById("rgun");
+  let rlistTimer = 0;
+  const raycaster = new THREE.Raycaster();
+  const screenCenter = new THREE.Vector2(0, 0);
+
+  function nearestTarget() {
+    let best = null, bd = Infinity;
+    for (const t of targets) {
+      const dx = t.x - player.x, dz = t.z - player.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return { t: best, d: bd };
+  }
+
+  // ============================================================
+  //  MAIN LOOP
+  // ============================================================
+  const clock = new THREE.Clock();
+  const fwd = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  let lookTimer = 0;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+
+    // movement
+    const sprint = keys["ShiftLeft"] || keys["ShiftRight"];
+    const speed = (sprint ? 26 : 8) * dt;  // yards/sec
+    fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
+    right.set(-Math.cos(yaw), 0, Math.sin(yaw));   // camera looks +Z, so screen-right = world -X
+    let mx = 0, mz = 0;
+    if (keys["KeyW"] || keys["ArrowUp"]) { mx += fwd.x; mz += fwd.z; }
+    if (keys["KeyS"] || keys["ArrowDown"]) { mx -= fwd.x; mz -= fwd.z; }
+    if (keys["KeyD"] || keys["ArrowRight"]) { mx += right.x; mz += right.z; }
+    if (keys["KeyA"] || keys["ArrowLeft"]) { mx -= right.x; mz -= right.z; }
+    const len = Math.hypot(mx, mz);
+    if (len > 0) {
+      mx /= len; mz /= len;
+      player.x += mx * speed;
+      player.z += mz * speed;
+    }
+    // bounds
+    player.x = Math.max(-HALF_W + 0.5, Math.min(HALF_W - 0.5, player.x));
+    player.z = Math.max(-8, Math.min(RANGE_LEN + 8, player.z));
+
+    camera.position.set(player.x, EYE, player.z);
+    // apply look direction
+    const dir = new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      Math.cos(yaw) * Math.cos(pitch)
+    );
+    camera.lookAt(camera.position.x + dir.x, camera.position.y + dir.y, camera.position.z + dir.z);
+
+    // keep sun shadow box near the player
+    sun.position.set(player.x - 80, 160, player.z + 60);
+    sunTarget.position.set(player.x, 0, player.z + 20);
+
+    // update reactive steel (swings, wobbles, paddle flips)
+    for (let i = 0; i < hittables.length; i++) {
+      if (hittables[i].update) hittables[i].update(dt);
+    }
+
+    // HUD timers
+    if (crossT > 0) { crossT -= dt; if (crossT <= 0) crossEl.classList.remove("hit"); }
+    if (hitMsgT > 0) { hitMsgT -= dt; if (hitMsgT <= 0) hitMsg.style.opacity = "0"; }
+
+    // optics: aim down sights + scope zoom
+    const aiming = aimHold || aimToggle;
+    const gun = nearestGun();
+    const tgtFov = aiming ? (gun === "RIFLE" ? BASE_FOV / scopeZoom : BASE_FOV) : BASE_FOV;
+    if (Math.abs(camera.fov - tgtFov) > 0.04) {
+      camera.fov += (tgtFov - camera.fov) * Math.min(1, dt * 12);
+      camera.updateProjectionMatrix();
+    }
+    lookSens = 0.0022 * (camera.fov / BASE_FOV);   // slower aim when zoomed in
+    const showScope = aiming && gun === "RIFLE";
+    const showDot = aiming && gun === "PISTOL";
+    scopeEl.style.display = showScope ? "block" : "none";
+    reddotEl.style.display = showDot ? "block" : "none";
+    crossEl.style.display = aiming ? "none" : "block";
+    if (showScope) updateReticleScale();
+    if (aiming) {
+      opticLabel.style.display = "block";
+      opticLabel.textContent = gun === "RIFLE"
+        ? "RIFLE SCOPE · " + (BASE_FOV / camera.fov).toFixed(1) + "× (scroll to zoom)"
+        : "RED DOT · 1×";
+    } else {
+      opticLabel.style.display = "none";
+    }
+
+    // distance HUD
+    const nt = nearestTarget();
+    if (nt.t) {
+      distEl.innerHTML =
+        '<div class="big">' + Math.round(nt.d) + ' yd</div>' +
+        '<div>to nearest: <b>' + nt.t.name + '</b></div>' +
+        '<div class="sub">Downrange position: ' + Math.round(player.z) + ' yd line</div>';
+    }
+
+    // per-target distance panel (updates as you move between lines)
+    rlistTimer += dt;
+    if (rlistTimer > 0.12) {
+      rlistTimer = 0;
+      const ds = targets.map(function (t) {
+        const dx = t.x - player.x, dz = t.z - player.z;
+        return Math.sqrt(dx * dx + dz * dz);
+      });
+      let minI = 0;
+      for (let i = 1; i < ds.length; i++) if (ds[i] < ds[minI]) minI = i;
+      let rows = "";
+      for (let i = 0; i < targets.length; i++) {
+        rows += '<div class="row' + (i === minI ? ' near' : '') + '"><span>' +
+          (targets[i].tag || targets[i].name) + '</span><b>' + Math.round(ds[i]) + ' yd</b></div>';
+      }
+      rlistEl.innerHTML = rows;
+      // which firing line am I on / nearest
+      let ln = firingLines[0], lb = Infinity;
+      for (let i = 0; i < firingLines.length; i++) {
+        const dd = Math.abs(firingLines[i].z - player.z);
+        if (dd < lb) { lb = dd; ln = firingLines[i]; }
+      }
+      rgunEl.textContent = (lb < 6 ? "● On the " + ln.dist + " yd " + ln.gun + " line"
+        : ln.gun + " zone · " + Math.round(player.z) + " yd mark");
+    }
+
+    // look-at target (raycast every few frames)
+    lookTimer += dt;
+    if (lookTimer > 0.08) {
+      lookTimer = 0;
+      raycaster.setFromCamera(screenCenter, camera);
+      const hit = raycaster.intersectObjects(targetMeshes, false);
+      if (hit.length && hit[0].distance < 1200) {
+        const d = hit[0].distance;                       // live range, updates per line
+        const nm = hit[0].object.userData.name || "Target";
+        let s = "◎ " + nm + "  ·  " + Math.round(d) + " yd";
+        if (nearestGun() === "RIFLE") s += "  ·  hold " + holdMil(d).toFixed(1) + " mil";
+        lookEl.textContent = s;
+        lookEl.style.opacity = "1";
+      } else {
+        lookEl.style.opacity = "0";
+      }
+    }
+
+    drawMinimap();
+    renderer.render(scene, camera);
+  }
+
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // hide loading once first frame is ready
+  document.getElementById("loading").style.display = "none";
+  animate();
+})();
+</script>
+</body>
+</html>
