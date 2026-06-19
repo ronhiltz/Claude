@@ -184,6 +184,10 @@
     left: calc(env(safe-area-inset-left) + 24px); bottom: calc(env(safe-area-inset-bottom) + 150px);
     width: 58px; height: 58px; font-size: 12px;
   }
+  #clearBtn {
+    left: calc(env(safe-area-inset-left) + 90px); bottom: calc(env(safe-area-inset-bottom) + 150px);
+    width: 56px; height: 56px; font-size: 10.5px; line-height: 1.1;
+  }
 
   /* zoom slider (rifle scope) */
   #zoomWrap {
@@ -255,6 +259,7 @@
   <div id="fireBtn" class="btn">FIRE</div>
   <div id="aimBtn" class="btn">AIM</div>
   <div id="sprintBtn" class="btn">RUN</div>
+  <div id="clearBtn" class="btn">CLEAR<br>MARKS</div>
   <div id="zoomWrap">
     <div class="zlbl" id="zoomLbl">6×</div>
     <input id="zoomSlider" type="range" min="3" max="32" step="0.5" value="6">
@@ -501,26 +506,18 @@
     return e;
   }
 
-  // ---- USPSA "C-Zone" silhouette shape (inches, centred on x) ----
-  function czoneShape(scale) {
-    const s = scale * IN;
-    const p = (x, y) => new THREE.Vector2(x * s, y * s);
+  // ---- USPSA "C-Zone" silhouette, sized to width W x height H (inches) ----
+  function czoneShape(W, H) {
+    const hw = (W / 2) * IN, ht = H * IN;   // half-width & height in yards
+    // normalized outline: xN in [-1,1] = fraction of half-width, yN in [0,1] = height
+    const pts = [
+      [0, 0], [0.444, 0.0667], [0.778, 0.20], [0.944, 0.40], [1.0, 0.80],
+      [0.333, 0.80], [0.333, 1.0], [-0.333, 1.0], [-0.333, 0.80], [-1.0, 0.80],
+      [-0.944, 0.40], [-0.778, 0.20], [-0.444, 0.0667], [0, 0]
+    ];
     const shape = new THREE.Shape();
-    // start bottom centre, go up the RIGHT side, across the top, down the LEFT
-    shape.moveTo(0, 0);
-    shape.lineTo(4 * s, 2 * s);
-    shape.lineTo(7 * s, 6 * s);
-    shape.lineTo(8.5 * s, 12 * s);
-    shape.lineTo(9 * s, 24 * s);      // right shoulder (widest)
-    shape.lineTo(3 * s, 24 * s);      // step in to head
-    shape.lineTo(3 * s, 30 * s);      // head right
-    shape.lineTo(-3 * s, 30 * s);     // head top
-    shape.lineTo(-3 * s, 24 * s);     // head left
-    shape.lineTo(-9 * s, 24 * s);     // left shoulder
-    shape.lineTo(-8.5 * s, 12 * s);
-    shape.lineTo(-7 * s, 6 * s);
-    shape.lineTo(-4 * s, 2 * s);
-    shape.lineTo(0, 0);
+    shape.moveTo(pts[0][0] * hw, pts[0][1] * ht);
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0] * hw, pts[i][1] * ht);
     return shape;
   }
 
@@ -530,29 +527,75 @@
   const woodMat = new THREE.MeshStandardMaterial({ color: 0xa9885a, roughness: 0.95 });
   const darkMetal = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.6, metalness: 0.6 });
 
-  // C-Zone target on a stand.  `full` => 18" wide silhouette (~30" tall)
+  // C-Zone target on a stand.  full => 12"x24" silhouette, reduced => 8"x16"
   function makeCZone(x, z, full, faceMinus) {
     // faceMinus: true => target faces -Z (toward the shooter at lower z)
     const g = new THREE.Group();
-    const scale = full ? 1.0 : 0.6667;   // reduced = 2/3
-    const baseH = (full ? 1.4 : 1.0) * YARD * 0.55; // height of silhouette bottom off ground
+    const W = full ? 12 : 8;             // silhouette width (inches)
+    const H = full ? 24 : 16;            // silhouette height (inches)
+    const baseH = 32 * IN;              // silhouette bottom ~32" off the ground
 
     // pivot at the base so the silhouette can rock back when hit
     const pivot = new THREE.Group();
     pivot.position.y = baseH;
     g.add(pivot);
 
-    const geo = new THREE.ExtrudeGeometry(czoneShape(scale), { depth: 0.5 * IN, bevelEnabled: false });
+    const geo = new THREE.ExtrudeGeometry(czoneShape(W, H), { depth: 0.5 * IN, bevelEnabled: false });
     const sil = new THREE.Mesh(geo, steelWhite);
     sil.castShadow = true;
     pivot.add(sil);
 
     // two mounting holes (dark dots near top)
-    const holeGeo = new THREE.CircleGeometry(0.9 * IN * scale, 10);
-    for (const hx of [-1.4, 1.4]) {
+    const holeGeo = new THREE.CircleGeometry(0.6 * IN, 10);
+    for (const hx of [-1, 1]) {
       const hole = new THREE.Mesh(holeGeo, darkMetal);
-      hole.position.set(hx * IN * scale, 28 * IN * scale, 0.4 * IN);
+      hole.position.set(hx * 0.16 * W * IN, 0.88 * H * IN, 0.4 * IN);
       pivot.add(hole);
+    }
+
+    // ---- hostage / no-shoot plate (reduced targets only): a small ~5" plate on an
+    //      arm that pivots around the post and flips side-to-side, like a dueling tree ----
+    if (!full) {
+      const armY = baseH + 0.9 * H * IN;           // up near the top of the silhouette
+      const armLen = (W / 2 + 5) * IN;             // reach out past the silhouette
+
+      const hp = new THREE.Group();                // vertical-axis pivot at the post top
+      hp.position.set(0, armY, 0);
+      hp.rotation.y = Math.PI;                      // start swung to the LEFT
+      g.add(hp);
+
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(armLen, 0.8 * IN, 0.8 * IN), darkMetal);
+      arm.position.set(armLen / 2, 0, 0);
+      hp.add(arm);
+
+      const sq = 5.5 * IN, ch = 0.7 * IN;          // ~5.5" square hit plate, rounded corners
+      const half = sq / 2;
+      const hs = new THREE.Shape();                // built hanging from y=0 down to -sq
+      hs.moveTo(-half + ch, 0);
+      hs.lineTo(half - ch, 0);
+      hs.lineTo(half, -ch);
+      hs.lineTo(half, -sq + ch);
+      hs.lineTo(half - ch, -sq);
+      hs.lineTo(-half + ch, -sq);
+      hs.lineTo(-half, -sq + ch);
+      hs.lineTo(-half, -ch);
+      hs.lineTo(-half + ch, 0);
+      const hgeo = new THREE.ExtrudeGeometry(hs, { depth: 0.4 * IN, bevelEnabled: false });
+      const plate = new THREE.Mesh(hgeo, steelWhite);
+      plate.position.set(armLen, 0, 0);            // out at the end of the arm
+      plate.castShadow = true;
+      plate.userData.name = "Hostage plate · " + z + " yd";
+      hp.add(plate);
+      targetMeshes.push(plate);
+
+      // flip across to the opposite side on each hit, then settle (bistable, like a dueling tree)
+      const hst = { target: Math.PI, cur: Math.PI };
+      registerHit(plate, x, z, "paddle", function () {
+        hst.target += Math.PI;                      // swing to the other side and stay
+      }, function (dt) {
+        hst.cur += (hst.target - hst.cur) * Math.min(1, dt * 9);
+        hp.rotation.y = hst.cur;
+      });
     }
 
     // stand post + feet
@@ -596,9 +639,21 @@
     base.position.y = 0.7 * IN; g.add(base);
     const base2 = new THREE.Mesh(new THREE.BoxGeometry(0.4 * FT, 1.5 * IN, 2 * FT), tanMat);
     base2.position.y = 0.7 * IN; g.add(base2);
-    // 6 round paddles on arms that swing around the central post
-    const padGeo = new THREE.CylinderGeometry(3 * IN, 3 * IN, 0.6 * IN, 16);
-    const armLen = 4.5 * IN;
+    // 6 square steel paddles (same ~5.5" rounded-square plate as the hostage)
+    // on arms that swing around the central post
+    const psq = 5.5 * IN, pch = 0.7 * IN, ph = psq / 2;
+    const padShape = new THREE.Shape();
+    padShape.moveTo(-ph + pch, -ph);
+    padShape.lineTo(ph - pch, -ph);
+    padShape.lineTo(ph, -ph + pch);
+    padShape.lineTo(ph, ph - pch);
+    padShape.lineTo(ph - pch, ph);
+    padShape.lineTo(-ph + pch, ph);
+    padShape.lineTo(-ph, ph - pch);
+    padShape.lineTo(-ph, -ph + pch);
+    padShape.lineTo(-ph + pch, -ph);
+    const padGeo = new THREE.ExtrudeGeometry(padShape, { depth: 0.5 * IN, bevelEnabled: false });
+    const armLen = 5 * IN;
     for (let i = 0; i < 6; i++) {
       const startSide = (i % 2 === 0) ? 0 : Math.PI;
       const yy = 1.4 * FT + i * (postH - 1.6 * FT) / 6;
@@ -607,8 +662,7 @@
       pv.rotation.y = startSide;
       g.add(pv);
       const pad = new THREE.Mesh(padGeo, steelWhite);
-      pad.rotation.x = Math.PI / 2;
-      pad.position.set(armLen, 0, 0.5 * IN);
+      pad.position.set(armLen, 0, 0);
       pad.castShadow = true;
       pad.userData.name = "Dueling Tree · 300 yd";
       pv.add(pad);
@@ -859,7 +913,9 @@
         joyEl.style.left = joyOX + "px"; joyEl.style.top = joyOY + "px";
         joyEl.style.display = "block";
         joyKnob.style.left = "50%"; joyKnob.style.top = "50%";
-      } else if (!leftHalf && lookId === null) {
+      } else if (!leftHalf) {
+        // always (re)claim look with the newest right-side touch, so a stale id
+        // can never leave the view frozen
         lookId = t.identifier; lookX = t.clientX; lookY = t.clientY;
       }
     }
@@ -919,6 +975,7 @@
   tap(document.getElementById("fireBtn"), function () { if (entered) shoot(); });
   tap(aimBtn, function () { aimToggle = !aimToggle; aimBtn.classList.toggle("on", aimToggle); updateZoomUI(); });
   tap(sprintBtn, function () { sprintOn = !sprintOn; sprintBtn.classList.toggle("on", sprintOn); });
+  tap(document.getElementById("clearBtn"), function () { clearMarks(); });
 
   zoomSlider.addEventListener("input", function () {
     scopeZoom = parseFloat(zoomSlider.value);
@@ -1108,22 +1165,117 @@
   const _O = new THREE.Vector3(), _D = new THREE.Vector3();
   const _prev = new THREE.Vector3(), _cur = new THREE.Vector3(), _seg = new THREE.Vector3();
 
+  // ---- bullet impact marks on steel + dirt splashes on misses ----
+  function splatCanvas(draw) {
+    const c = document.createElement("canvas"); c.width = c.height = 64;
+    draw(c.getContext("2d"));
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; return t;
+  }
+  const impactTex = splatCanvas(function (g) {        // hi-vis orange marking paint
+    const cx = 32, cy = 32;
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * 6.283, d = 6 + Math.random() * 25;
+      g.fillStyle = "rgba(255," + (120 + (Math.random() * 50 | 0)) + ",20," + (0.4 + Math.random() * 0.5) + ")";
+      g.beginPath(); g.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 1.5 + Math.random() * 5, 0, 6.283); g.fill();
+    }
+    const grd = g.createRadialGradient(cx, cy, 1, cx, cy, 18);
+    grd.addColorStop(0, "rgba(255,150,0,0.98)");
+    grd.addColorStop(0.5, "rgba(255,95,0,0.94)");
+    grd.addColorStop(1, "rgba(255,80,0,0)");
+    g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, 18, 0, 6.283); g.fill();
+    g.fillStyle = "rgba(60,20,0,0.85)";
+    g.beginPath(); g.arc(cx, cy, 3, 0, 6.283); g.fill();
+  });
+  const dirtTex = splatCanvas(function (g) {          // brown dirt splat
+    const cx = 32, cy = 32;
+    for (let i = 0; i < 20; i++) {
+      const a = Math.random() * 6.283, d = 4 + Math.random() * 26;
+      g.fillStyle = "rgba(" + (90 + (Math.random() * 40 | 0)) + "," + (60 + (Math.random() * 30 | 0)) + ",35," + (0.3 + Math.random() * 0.5) + ")";
+      g.beginPath(); g.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2 + Math.random() * 6, 0, 6.283); g.fill();
+    }
+    const grd = g.createRadialGradient(cx, cy, 1, cx, cy, 20);
+    grd.addColorStop(0, "rgba(70,48,28,0.9)");
+    grd.addColorStop(1, "rgba(90,62,38,0)");
+    g.fillStyle = grd; g.beginPath(); g.arc(cx, cy, 20, 0, 6.283); g.fill();
+  });
+  const dustTex = splatCanvas(function (g) {          // soft dust puff
+    const grd = g.createRadialGradient(32, 32, 1, 32, 32, 30);
+    grd.addColorStop(0, "rgba(184,156,116,0.85)");
+    grd.addColorStop(1, "rgba(184,156,116,0)");
+    g.fillStyle = grd; g.beginPath(); g.arc(32, 32, 30, 0, 6.283); g.fill();
+  });
+  const impactMat = new THREE.MeshBasicMaterial({ map: impactTex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const dirtMat = new THREE.MeshBasicMaterial({ map: dirtTex, transparent: true, depthWrite: false });
+
+  const steelMarks = [], dirtDecals = [], dustPuffs = [];
+  const _wp = new THREE.Vector3(), _cl = new THREE.Vector3();
+
+  function addImpactMark(mesh, worldPoint) {
+    mesh.updateWorldMatrix(true, false);
+    const local = mesh.worldToLocal(_wp.copy(worldPoint));
+    const lx = local.x, ly = local.y, lz = local.z;
+    const camLocal = mesh.worldToLocal(_cl.copy(camera.position));
+    const zside = (camLocal.z >= lz) ? 1 : -1;      // toward the shooter side of the face
+    const size = (1.0 + Math.random() * 0.7) * IN;
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(size, size), impactMat);
+    mark.position.set(lx, ly, lz + zside * 0.4 * IN);
+    mark.rotation.z = Math.random() * Math.PI;
+    mesh.add(mark);
+    steelMarks.push(mark);
+    if (steelMarks.length > 250) { const old = steelMarks.shift(); if (old.parent) old.parent.remove(old); old.geometry.dispose(); }
+  }
+
+  function addDirtSplash(p) {
+    const size = (1.2 + Math.random() * 1.2) * FT;
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(size, size), dirtMat);
+    decal.rotation.x = -Math.PI / 2;
+    decal.rotation.z = Math.random() * Math.PI;
+    decal.position.set(p.x, 0.04, p.z);
+    scene.add(decal); dirtDecals.push(decal);
+    if (dirtDecals.length > 80) { const old = dirtDecals.shift(); scene.remove(old); old.geometry.dispose(); }
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTex, transparent: true, depthWrite: false, opacity: 0.9 }));
+    spr.position.set(p.x, 1.2 * FT, p.z); spr.scale.setScalar(1.5 * FT);
+    scene.add(spr); dustPuffs.push({ spr: spr, t: 0, life: 0.7 });
+  }
+
+  function updateDust(dt) {
+    for (let i = dustPuffs.length - 1; i >= 0; i--) {
+      const d = dustPuffs[i]; d.t += dt;
+      const k = d.t / d.life;
+      if (k >= 1) { scene.remove(d.spr); d.spr.material.dispose(); dustPuffs.splice(i, 1); continue; }
+      d.spr.scale.setScalar((1.5 + k * 4) * FT);
+      d.spr.position.y = 1.2 * FT + k * 2 * FT;
+      d.spr.material.opacity = 0.9 * (1 - k);
+    }
+  }
+
+  function clearMarks() {
+    for (let i = 0; i < steelMarks.length; i++) { const m = steelMarks[i]; if (m.parent) m.parent.remove(m); m.geometry.dispose(); }
+    steelMarks.length = 0;
+    for (let i = 0; i < dirtDecals.length; i++) { scene.remove(dirtDecals[i]); dirtDecals[i].geometry.dispose(); }
+    dirtDecals.length = 0;
+  }
+
   function shoot() {
     playGunshot();
     crossEl.classList.add("hit"); crossT = 0.12;
 
     const rifle = nearestGun() === "RIFLE";
-    let obj = null, point = null, dist = 0;
+    let obj = null, point = null, dist = 0, groundHit = null;
+    camera.getWorldDirection(_D);
 
     if (!rifle) {
       // PISTOL: flat — point of aim is point of impact at these short ranges
       raycaster.setFromCamera(screenCenter, camera);
       const hits = raycaster.intersectObjects(targetMeshes, false);
       if (hits.length) { obj = hits[0].object; point = hits[0].point; dist = hits[0].distance; }
+      else if (_D.y < -1e-4) {                  // where the round meets the ground
+        const tg = -camera.position.y / _D.y;
+        if (tg > 0) groundHit = _O.copy(camera.position).addScaledVector(_D, tg).clone();
+      }
     } else {
       // RIFLE: march the bullet along the line of sight while gravity drops it
       // (same 100-yd-zero dope as the reticle) — you must hold the right mil over.
-      camera.getWorldDirection(_D);
       _O.copy(camera.position);
       _prev.copy(_O);
       const step = 3, maxR = 1150;             // yards
@@ -1141,20 +1293,27 @@
           dist = _O.distanceTo(point);
           break;
         }
+        if (_cur.y <= 0 && _prev.y > 0) {        // bullet struck the ground (miss)
+          const f = _prev.y / (_prev.y - _cur.y);
+          groundHit = _prev.clone().lerp(_cur, f);
+          break;
+        }
         _prev.copy(_cur);
       }
       raycaster.far = Infinity;                 // reset for the per-frame look raycast
     }
 
     if (!obj) {
-      // clean miss — usually because you held center instead of holding over
-      hitMsg.innerHTML = '<span style="color:#ffb4a0">✗ miss — hold over for the range</span>';
+      // clean miss — kick up dirt where the round lands so you can spot it
+      if (groundHit) addDirtSplash(groundHit);
+      hitMsg.innerHTML = '<span style="color:#ffb4a0">✗ miss' + (rifle ? ' — hold over for the range' : '') + '</span>';
       hitMsg.style.opacity = "1"; hitMsgT = 0.9;
       return;
     }
     const e = obj.userData.hittable;
     if (!e) return;
     e.onHit(point);
+    addImpactMark(obj, point);           // leave a visible splatter where it hit
     playDing(dist, kindFreq(e.size));
     hitMsg.innerHTML = '✦ HIT &nbsp;<b>' + (obj.userData.name || "steel") + '</b>' +
       '<div class="sub">' + Math.round(dist) + ' yd · ring back in ' + (dist / SOUND_SPEED).toFixed(1) + ' s</div>';
@@ -1280,6 +1439,7 @@
     for (let i = 0; i < hittables.length; i++) {
       if (hittables[i].update) hittables[i].update(dt);
     }
+    updateDust(dt);   // animate miss dust puffs
 
     // HUD timers
     if (crossT > 0) { crossT -= dt; if (crossT <= 0) crossEl.classList.remove("hit"); }
@@ -1293,7 +1453,7 @@
       camera.fov += (tgtFov - camera.fov) * Math.min(1, dt * 12);
       camera.updateProjectionMatrix();
     }
-    lookSens = TOUCH_LOOK * (camera.fov / BASE_FOV);   // slower look when zoomed in
+    lookSens = TOUCH_LOOK * Math.pow(camera.fov / BASE_FOV, 0.7);   // gentler slow-down so you can still pan when zoomed in
     const showScope = aiming && gun === "RIFLE";
     const showDot = aiming && gun === "PISTOL";
     scopeEl.style.display = showScope ? "block" : "none";
