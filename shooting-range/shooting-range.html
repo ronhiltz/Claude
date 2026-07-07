@@ -171,8 +171,8 @@
   </div>
   <div id="hint">
     <b>Move:</b> <span class="keys">W A S D</span> &nbsp; <b>Look:</b> mouse &nbsp; <b>Sprint:</b> <span class="keys">Shift</span> &nbsp; <b>Shoot:</b> left-click<br>
-    <b>Aim:</b> right-click or <span class="keys">F</span> &nbsp; <b>Scope zoom:</b> scroll wheel (rifle lines) &nbsp; <b>Clear marks:</b> <span class="keys">C</span> &nbsp; <b>Release mouse:</b> <span class="keys">Esc</span><br>
-    <b>Jump to line:</b> <span class="keys">1</span>·300yd <span class="keys">2</span>·200yd <span class="keys">3</span>·100yd <span class="keys">4</span>·25yd <span class="keys">5</span>·10yd
+    <b>Aim:</b> right-click or <span class="keys">F</span> &nbsp; <b>Scope zoom:</b> scroll wheel (rifle) &nbsp; <b>Clear marks:</b> <span class="keys">C</span> &nbsp; <b>Release mouse:</b> <span class="keys">Esc</span><br>
+    <b>Jump to line:</b> <span class="keys">1</span>–<span class="keys">5</span> (1 = farthest 300yd · 5 = closest 10yd) &nbsp; <b>Rifle/Pistol:</b> <span class="keys">G</span> &nbsp; <b>Hostage:</b> <span class="keys">H</span>
   </div>
 </div>
 
@@ -181,7 +181,7 @@
     <div class="tag">Outdoor Rifle &amp; Pistol Range</div>
     <h1>1000-Yard Walk-Through Range</h1>
     <p>A realistic 60-ft-wide, 1000-yard range set in a mowed grass corridor with dense hardwoods on both sides. Walk the firing lanes, move between the rifle and pistol firing lines, and look downrange at the steel. <b>Click to shoot</b> — hit the steel and listen for the ring travel back to you.</p>
-    <p style="opacity:.85;font-size:13px">Targets: Reduced C-Zone + Dueling Tree @300 (L) · Reduced C-Zone @400 (R) · C-Zone @500 (RoC) · Gong @600 (LoC) · Gong @800 (L) · Gong @1000 (R)</p>
+    <p style="opacity:.85;font-size:13px">Targets: Dueling Tree @300 (L) · 2× Reduced C-Zone @300 (R) · C-Zone @500 (RoC) · Gong @600 (LoC) · Gong @800 (L) · Gong @1000 (R)</p>
     <div class="start">▶ Click to Enter the Range</div>
     <div class="small">Uses <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> + mouse look. Press <kbd>Esc</kbd> any time to free the cursor.</div>
   </div>
@@ -444,6 +444,7 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
   const targetMeshes = [];   // for raycast / "look" info
   const targets = [];        // {name, x, z, color} for minimap
   const hittables = [];      // {mesh, x, z, size, onHit, update} reactive steel
+  const reducedCZones = [];  // hostage-scenario controllers (one per reduced C-Zone)
   function registerHit(mesh, x, z, size, onHit, update) {
     const e = { mesh: mesh, x: x, z: z, size: size, onHit: onHit, update: update };
     mesh.userData.hittable = e;
@@ -531,16 +532,27 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
       plate.castShadow = true;
       plate.userData.name = "Hostage plate · " + z + " yd";
       hp.add(plate);
-      targetMeshes.push(plate);
 
       // flip across to the opposite side on each hit, then settle (bistable, like a dueling tree)
       const hst = { target: Math.PI, cur: Math.PI };
-      registerHit(plate, x, z, "paddle", function () {
+      const plateHit = registerHit(plate, x, z, "hostage", function () {
         hst.target += Math.PI;                      // swing to the other side and stay
       }, function (dt) {
         hst.cur += (hst.target - hst.cur) * Math.min(1, dt * 9);
         hp.rotation.y = hst.cur;
       });
+      plateHit.hz = steelHz(5.5);
+
+      // Scenario control: in HOSTAGE mode the plate swings out as the shoot target
+      // (silhouette becomes the no-shoot); otherwise it is tucked away and inert.
+      const scenario = { present: function (on) {
+        hp.visible = on;
+        const mi = targetMeshes.indexOf(plate);
+        if (on && mi < 0) targetMeshes.push(plate);
+        if (!on && mi >= 0) targetMeshes.splice(mi, 1);
+      } };
+      scenario.present(false);       // default: no-hostage
+      reducedCZones.push(scenario);
     }
 
     // stand post + feet
@@ -680,13 +692,14 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
       pv.add(plate);
       targetMeshes.push(plate);
       const st = { v: 0, a: 0 };
-      registerHit(plate, x, z, side >= 12 ? "biggong" : "gong", function () {
+      const gongHit = registerHit(plate, x, z, side >= 12 ? "biggong" : "gong", function () {
         st.v += 8.0;
       }, function (dt) {
         st.v += (-24 * st.a - 1.3 * st.v) * dt;   // damped pendulum
         st.a += st.v * dt;
         pv.rotation.x = st.a;
       });
+      gongHit.hz = steelHz(side);          // ring pitch scales with plate size (inches)
     });
 
     g.position.set(x, 0, z);
@@ -699,9 +712,9 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
   // (x: negative = left, positive = right.  Lanes span +/-10 yd)
   const L = -7, R = 7, LoC = -3, RoC = 3;
 
-  makeCZone(L, 300, false, true);           // reduced C-Zone, 300 left
-  makeDuelingTree(L + 3, 300);              // dueling tree beside it
-  makeCZone(R, 400, false, true);           // reduced C-Zone, 400 right
+  makeDuelingTree(L + 3, 300);              // dueling tree, 300 left
+  makeCZone(R - 3, 300, false, true);       // reduced C-Zone #1 (hostage), 300 right
+  makeCZone(R, 300, false, true);           // reduced C-Zone #2 (hostage), 300 right
   makeCZone(RoC, 500, true, true);          // full C-Zone, 500 right-of-centre
   makeGong(LoC, 600, [12, 10, 6], "600 yd"); // gong, 600 left-of-centre, 12" + 10" + 6"
   makeGong(L, 800, [14, 10], "800 yd");     // gong, 800 left
@@ -747,7 +760,6 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
     groundDecal(x, z - 5, txt, { color: col || "#fff", border: "rgba(255,210,120,0.9)" });
   }
   yardSign(L, 300, "300 YD", "#fff");
-  yardSign(R, 400, "400 YD", "#fff");
   yardSign(RoC, 500, "500 YD", "#fff");
   yardSign(LoC, 600, "600 YD", "#cfd6dc");
   yardSign(L, 800, "800 YD", "#cfd6dc");
@@ -774,7 +786,7 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
   const lineMatRifle = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
   const lineMatPistol = new THREE.MeshStandardMaterial({ color: 0xffd24d, roughness: 1 });
 
-  firingLines.forEach(fl => {
+  firingLines.forEach((fl, i) => {
     const isPistol = fl.gun === "PISTOL";
     // painted line across the lane
     const strip = new THREE.Mesh(
@@ -797,7 +809,7 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
     }
 
     // flat marker painted on the firing line itself (no longer blocks downrange)
-    const txt = fl.dist + " YD · " + fl.gun;
+    const txt = "LINE " + (i + 1) + " · " + fl.dist + " yd";
     groundDecal(0, fl.z + 2.6, txt, {
       h: 3.0,
       color: isPistol ? "#fff1c2" : "#ffffff",
@@ -849,14 +861,34 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
   });
 
   // Which firearm/optic applies at the player's current downrange position
-  function nearestGun() {
-    let best = "RIFLE", bd = Infinity;
+  // The bench sits on whichever line is nearest.  Each line has a sensible
+  // default firearm (far = rifle, up-close = pistol); a manual toggle overrides
+  // it and sticks until you move to another line or toggle again.
+  let curLine = -1, curGun = "RIFLE", gunManual = false;
+  function nearestLineIndex() {
+    let idx = 0, bd = Infinity;
     for (let i = 0; i < firingLines.length; i++) {
       const d = Math.abs(firingLines[i].z - player.z);
-      if (d < bd) { bd = d; best = firingLines[i].gun; }
+      if (d < bd) { bd = d; idx = i; }
     }
-    return best;
+    return idx;
   }
+  function updateFirearm() {
+    const idx = nearestLineIndex();
+    if (idx !== curLine) {                 // arrived at a new line -> apply its default
+      curLine = idx; curGun = firingLines[idx].gun; gunManual = false;
+      syncFirearmUI();
+    }
+    return idx;
+  }
+  function toggleFirearm() {
+    curGun = (curGun === "RIFLE") ? "PISTOL" : "RIFLE";
+    gunManual = true;
+    syncFirearmUI();
+  }
+  // nearestGun() is polled every frame for optic selection, so refresh the
+  // line/firearm state here — no need to touch either build's animate loop.
+  function nearestGun() { updateFirearm(); return curGun; }
 
   // First click grabs (captures) the cursor. Once captured, left = shoot,
   // right = aim down sights. Keeping the lock authoritative means look never
@@ -908,6 +940,8 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
     if (!entered) return;
     keys[e.code] = true;
     if (e.code === "KeyF" && !e.repeat) aimToggle = !aimToggle;
+    if (e.code === "KeyG" && !e.repeat) toggleFirearm();
+    if (e.code === "KeyH" && !e.repeat) toggleHostage();
     if (e.code === "KeyC") clearMarks();          // wipe the steel + dirt
     const map = { Digit1: 0, Digit2: 100, Digit3: 200, Digit4: 275, Digit5: 290 };
     if (e.code in map) { player.z = map[e.code]; player.x = 0; }
@@ -941,6 +975,63 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
     const a = HOLD_TABLE[HOLD_TABLE.length - 2], b = HOLD_TABLE[HOLD_TABLE.length - 1];
     return b[1] + (b[1] - a[1]) * (yd - b[0]) / (b[0] - a[0]);
   }
+
+  // ---- Wind ------------------------------------------------------------
+  // A slowly shifting crosswind.  wind.mph > 0 blows toward the shooter's RIGHT.
+  // Full-value drift (inches at 10 mph) for the same 6.5 CM load as the drop dope.
+  const WIND_TABLE = [
+    [100, 0.6], [200, 2.6], [300, 5.9], [400, 10.8], [500, 17.2],
+    [600, 25.5], [700, 35.8], [800, 48.4], [900, 63.5], [1000, 81.4]
+  ];
+  function windInches10(yd) {
+    if (yd <= 0) return 0;
+    for (let i = 1; i < WIND_TABLE.length; i++) {
+      if (yd <= WIND_TABLE[i][0]) {
+        const a = WIND_TABLE[i - 1], b = WIND_TABLE[i];
+        return a[1] + (b[1] - a[1]) * (yd - a[0]) / (b[0] - a[0]);
+      }
+    }
+    const a = WIND_TABLE[WIND_TABLE.length - 2], b = WIND_TABLE[WIND_TABLE.length - 1];
+    return b[1] + (b[1] - a[1]) * (yd - b[0]) / (b[0] - a[0]);
+  }
+  const wind = { mph: 4, target: 4, timer: 0 };
+  function pickWind() {
+    wind.target = Math.round((Math.random() * 2 - 1) * 12);  // -12..+12 mph
+    wind.timer = 7 + Math.random() * 11;                     // hold 7-18 s
+  }
+  pickWind();
+  function updateWind(dt) {
+    wind.timer -= dt;
+    if (wind.timer <= 0) pickWind();
+    wind.mph += (wind.target - wind.mph) * Math.min(1, dt * 0.5);
+  }
+  // signed lateral drift in YARDS at range r (+ = pushed to the shooter's right)
+  function windDriftYd(r) {
+    return (windInches10(r) * (wind.mph / 10)) / 36;
+  }
+  // steel ring pitch: smaller plate rings higher (Hz from plate side in inches)
+  function steelHz(inches) {
+    return Math.round(2600 / Math.max(4, inches) + 130);
+  }
+
+  // ---- Downrange wind flags (read them, then hold off) ----
+  const windFlags = [];
+  function makeWindFlag(x, z) {
+    const g = new THREE.Group();
+    const poleH = 8 * FT;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.9 * IN, 0.9 * IN, poleH, 6), darkMetal);
+    pole.position.y = poleH / 2; pole.castShadow = true; g.add(pole);
+    const flag = new THREE.Group(); flag.position.set(0, poleH - 0.4 * FT, 0); g.add(flag);
+    const cloth = new THREE.Mesh(
+      new THREE.PlaneGeometry(3 * FT, 1.4 * FT),
+      new THREE.MeshStandardMaterial({ color: 0xff7a2a, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide })
+    );
+    cloth.position.set(1.5 * FT, 0, 0); cloth.castShadow = true; flag.add(cloth);
+    g.position.set(x, 0, z); scene.add(g);
+    windFlags.push({ flag: flag, cloth: cloth });
+  }
+  makeWindFlag(8, 250);
+  makeWindFlag(-8, 550);
 
   // ---- First-focal-plane mil reticle (built once, scaled per zoom) ------
   (function buildReticle() {
@@ -1080,6 +1171,103 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
     return 500;                        // full C-zone
   }
 
+  // ---- No-shoot scoring + penalty feedback ----
+  let score = 0, hits = 0, penalties = 0;
+  function playBuzzer(dist) {
+    if (!actx) return;
+    const t = actx.currentTime + Math.min(dist / SOUND_SPEED, 4);
+    const o = actx.createOscillator(); o.type = "square"; o.frequency.value = 150;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.01);
+    g.gain.setValueAtTime(0.5, t + 0.26);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g).connect(masterGain);
+    o.start(t); o.stop(t + 0.42);
+  }
+  const hudRoot = document.getElementById("hud") || document.body;
+  const windEl = document.createElement("div"); windEl.id = "wind"; hudRoot.appendChild(windEl);
+  const scoreEl = document.createElement("div"); scoreEl.id = "score"; hudRoot.appendChild(scoreEl);
+  (function () {
+    const s = document.createElement("style");
+    s.textContent =
+      "#wind{position:absolute;top:104px;left:50%;transform:translateX(-50%);" +
+      "background:rgba(15,22,12,.6);color:#dff3cf;padding:5px 14px;border-radius:9px;" +
+      "font-size:13px;letter-spacing:.3px;border:1px solid rgba(180,220,150,.22);" +
+      "text-align:center;min-width:150px;pointer-events:none;z-index:9;}" +
+      "#wind .wval{font-weight:700;color:#fff;}" +
+      "#score{position:absolute;right:14px;bottom:14px;background:rgba(15,22,12,.6);color:#eafbe0;" +
+      "padding:8px 14px;border-radius:10px;font-size:12.5px;border:1px solid rgba(180,220,150,.25);" +
+      "text-align:right;min-width:118px;pointer-events:none;z-index:9;}" +
+      "#score .sc{font-size:20px;font-weight:800;color:#fff;}" +
+      "#score .pen{color:#ff8a7a;}";
+    document.head.appendChild(s);
+  })();
+  function updateScore() {
+    scoreEl.innerHTML = '<div class="sc">' + score + '</div>' +
+      '<div>' + hits + ' hits' + (penalties ? ' &middot; <span class="pen">' + penalties + ' no-shoot</span>' : '') + '</div>';
+  }
+  updateScore();
+
+  // ---- Firearm selection UI (per-line default + manual override) ----
+  const firearmEl = document.createElement("div"); firearmEl.id = "firearm"; hudRoot.appendChild(firearmEl);
+  (function () {
+    const s = document.createElement("style");
+    s.textContent =
+      "#firearm{position:absolute;left:14px;top:300px;" +
+      "background:rgba(15,22,12,.62);border:1px solid rgba(190,230,164,.5);border-radius:9px;" +
+      "color:#eafbe0;font-size:12.5px;font-weight:700;letter-spacing:.3px;padding:6px 14px;" +
+      "pointer-events:auto;cursor:pointer;z-index:12;white-space:nowrap;text-align:center;" +
+      "-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}" +
+      "#firearm.pistol{border-color:rgba(255,210,77,.75);}" +
+      "#firearm .k{opacity:.68;font-weight:600;}";
+    document.head.appendChild(s);
+  })();
+  function syncFirearmUI() {
+    if (!firearmEl) return;
+    const pistol = curGun === "PISTOL";
+    firearmEl.classList.toggle("pistol", pistol);
+    firearmEl.innerHTML = (pistol ? "PISTOL · red dot" : "RIFLE · scope") +
+      '<span class="k">&nbsp; ' + (gunManual ? "held" : "line default") + " · tap/G</span>";
+  }
+  function onFirearmTap(ev) { ev.preventDefault(); ev.stopPropagation(); toggleFirearm(); }
+  firearmEl.addEventListener("click", onFirearmTap);
+  firearmEl.addEventListener("touchstart", onFirearmTap, { passive: false });
+  syncFirearmUI();
+
+  // ---- Hostage-drill scenario toggle (both reduced C-Zones) ----
+  let hostageMode = false;
+  const scenarioEl = document.createElement("div"); scenarioEl.id = "scenario"; hudRoot.appendChild(scenarioEl);
+  (function () {
+    const s = document.createElement("style");
+    s.textContent =
+      "#scenario{position:absolute;left:14px;top:338px;" +
+      "background:rgba(15,22,12,.62);border:1px solid rgba(190,230,164,.45);border-radius:9px;" +
+      "color:#dfe9d2;font-size:12px;font-weight:700;letter-spacing:.3px;padding:6px 14px;" +
+      "pointer-events:auto;cursor:pointer;z-index:12;white-space:nowrap;text-align:center;" +
+      "-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}" +
+      "#scenario.on{border-color:rgba(255,120,90,.85);color:#ffd9cf;}" +
+      "#scenario .k{opacity:.66;font-weight:600;}";
+    document.head.appendChild(s);
+  })();
+  function syncScenarioUI() {
+    if (!scenarioEl) return;
+    scenarioEl.classList.toggle("on", hostageMode);
+    scenarioEl.innerHTML = hostageMode
+      ? "HOSTAGE: ON<span class='k'>&nbsp; hit the plate, spare the silhouette &middot; tap/H</span>"
+      : "HOSTAGE: OFF<span class='k'>&nbsp; shoot the silhouette &middot; tap/H</span>";
+  }
+  function setHostageMode(on) {
+    hostageMode = on;
+    for (let i = 0; i < reducedCZones.length; i++) reducedCZones[i].present(on);
+    syncScenarioUI();
+  }
+  function toggleHostage() { setHostageMode(!hostageMode); }
+  function onScenarioTap(ev) { ev.preventDefault(); ev.stopPropagation(); toggleHostage(); }
+  scenarioEl.addEventListener("click", onScenarioTap);
+  scenarioEl.addEventListener("touchstart", onScenarioTap, { passive: false });
+  setHostageMode(false);
+
   // ============================================================
   //  SHOOTING
   // ============================================================
@@ -1089,6 +1277,7 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
   const WORLD_UP = new THREE.Vector3(0, 1, 0);
   const _O = new THREE.Vector3(), _D = new THREE.Vector3();
   const _prev = new THREE.Vector3(), _cur = new THREE.Vector3(), _seg = new THREE.Vector3();
+  const _right = new THREE.Vector3();
 
   // ---- bullet impact marks on steel + dirt splashes on misses ----
   function splatCanvas(draw) {
@@ -1203,10 +1392,12 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
       // (same 100-yd-zero dope as the reticle) — you must hold the right mil over.
       _O.copy(camera.position);
       _prev.copy(_O);
+      _right.copy(_D).cross(WORLD_UP).normalize();  // horizontal, to the shooter's right
       const step = 3, maxR = 1150;             // yards
       for (let r = step; r <= maxR; r += step) {
         const dropY = r * holdMil(r) / 1000;   // yards below line of sight at range r
-        _cur.copy(_O).addScaledVector(_D, r).addScaledVector(WORLD_UP, -dropY);
+        const driftX = windDriftYd(r);         // crosswind push (+ = to the right)
+        _cur.copy(_O).addScaledVector(_D, r).addScaledVector(WORLD_UP, -dropY).addScaledVector(_right, driftX);
         _seg.copy(_cur).sub(_prev);
         const segLen = _seg.length();
         raycaster.set(_prev, _seg.normalize());
@@ -1239,8 +1430,27 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
     if (!e) return;
     e.onHit(point);
     addImpactMark(obj, point);           // leave a visible splatter where it hit
-    playDing(dist, kindFreq(e.size));
-    hitMsg.innerHTML = '✦ HIT &nbsp;<b>' + (obj.userData.name || "steel") + '</b>' +
+    // Hostage drill: silhouette = the hostage (no-shoot), swing plate = the threat.
+    if (hostageMode && e.size === "czone-r") {   // shot the hostage silhouette
+      score -= 15; penalties++; updateScore();
+      playBuzzer(dist);
+      hitMsg.innerHTML = '<span style="color:#ff6a5a">✗ NO-SHOOT — <b>HOSTAGE HIT</b></span>' +
+        '<div class="sub" style="color:#ffb4a0">−15 penalty · you shot the silhouette · ' + Math.round(dist) + ' yd</div>';
+      hitMsg.style.opacity = "1"; hitMsgT = 1.8;
+      return;
+    }
+    if (e.size === "hostage") {                  // the exposed threat plate (hostage mode)
+      score += 10; hits++; updateScore();
+      playDing(dist, e.hz || 700);
+      hitMsg.innerHTML = '✦ THREAT PLATE &nbsp;<span style="color:#bfe6a4">+10</span>' +
+        '<div class="sub">' + Math.round(dist) + ' yd · hostage unharmed</div>';
+      hitMsg.style.opacity = "1"; hitMsgT = 1.4;
+      return;
+    }
+    const pts = 5 + Math.round(dist / 100);   // farther steel scores more
+    score += pts; hits++; updateScore();
+    playDing(dist, e.hz || kindFreq(e.size));
+    hitMsg.innerHTML = '✦ HIT &nbsp;<b>' + (obj.userData.name || "steel") + '</b> <span style="color:#bfe6a4">+' + pts + '</span>' +
       '<div class="sub">' + Math.round(dist) + ' yd · ring back in ' + (dist / SOUND_SPEED).toFixed(1) + ' s</div>';
     hitMsg.style.opacity = "1"; hitMsgT = 1.4;
   }
@@ -1368,6 +1578,14 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
       if (hittables[i].update) hittables[i].update(dt);
     }
     updateDust(dt);   // animate miss dust puffs
+    updateWind(dt);   // drift the crosswind over time
+    for (let i = 0; i < windFlags.length; i++) {
+      const wf = windFlags[i];
+      wf.flag.rotation.y = wind.mph >= 0 ? Math.PI : 0;   // stream toward the blow direction
+      const lift = Math.min(1, Math.abs(wind.mph) / 12);  // 0 = limp, 1 = straight out
+      wf.cloth.rotation.z = -(1 - lift) * 1.2;
+      wf.flag.scale.x = 0.35 + 0.65 * lift;
+    }
 
     // HUD timers
     if (crossT > 0) { crossT -= dt; if (crossT <= 0) crossEl.classList.remove("hit"); }
@@ -1432,6 +1650,11 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
         '<div>to nearest: <b>' + nt.t.name + '</b></div>' +
         '<div class="sub">Downrange position: ' + Math.round(player.z) + ' yd line</div>';
     }
+    {
+      const wm = wind.mph, aw = Math.abs(wm);
+      windEl.innerHTML = aw < 1 ? 'WIND <span class="wval">calm</span>'
+        : 'WIND <span class="wval">' + aw.toFixed(0) + ' mph</span> · ' + (wm >= 0 ? 'L&rarr;R' : 'R&rarr;L');
+    }
 
     // per-target distance panel (updates as you move between lines)
     rlistTimer += dt;
@@ -1450,13 +1673,13 @@ document.documentElement.style.setProperty("--range-backdrop", 'url("' + RANGE_B
       }
       rlistEl.innerHTML = rows;
       // which firing line am I on / nearest
-      let ln = firingLines[0], lb = Infinity;
+      let lnI = 0, lb = Infinity;
       for (let i = 0; i < firingLines.length; i++) {
         const dd = Math.abs(firingLines[i].z - player.z);
-        if (dd < lb) { lb = dd; ln = firingLines[i]; }
+        if (dd < lb) { lb = dd; lnI = i; }
       }
-      rgunEl.textContent = (lb < 6 ? "● On the " + ln.dist + " yd " + ln.gun + " line"
-        : ln.gun + " zone · " + Math.round(player.z) + " yd mark");
+      rgunEl.textContent = (lb < 6 ? "● On Line " + (lnI + 1) + " · " + curGun
+        : "Line " + (lnI + 1) + " area · " + curGun);
     }
 
     // look-at target (raycast every few frames)
