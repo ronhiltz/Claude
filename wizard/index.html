@@ -29,7 +29,8 @@ body{
   margin:0;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:var(--ink);
-  background:
+  background-color:var(--bg);          /* paint our own ground, never borrow the host's */
+  background-image:
     radial-gradient(1200px 700px at 50% -10%, #2a1c4d 0%, transparent 60%),
     linear-gradient(160deg,var(--bg) 0%, var(--bg2) 55%, #0f0a1c 100%);
   background-attachment:fixed;
@@ -302,6 +303,7 @@ tr.lead td{color:var(--gold)}
     </div>
 
     <button class="primary" id="btnStart">Deal the cards</button>
+    <button class="ghost hidden" id="btnResume">Resume current game</button>
     <button class="ghost" id="btnRules2">How to play</button>
   </div>
 </div>
@@ -458,6 +460,14 @@ let S = null;                 // game state
 let humanCardResolver = null;
 let humanBidResolver  = null;
 let continueResolver  = null;
+let trumpResolver     = null;
+
+// Abandoning a game mid-flow: bump the token, and the running round loop unwinds
+// at its next checkpoint instead of fighting with the new game over the state.
+let gameToken = 0;
+let gameActive = false;
+const ABORT = Symbol('abort');
+function guard(token){ if(token !== gameToken) throw ABORT; }
 
 const SPEED = /[?&]fast=1/.test(location.search) ? 0.12 : 1;   // ?fast=1 speeds up automated runs
 const sleep = ms => new Promise(r => setTimeout(r, ms * SPEED));
@@ -799,16 +809,18 @@ function waitForContinue(){ return new Promise(r => { continueResolver = r; }); 
 
 /* ============================ Game flow ============================ */
 
-async function playGame(){
+async function playGame(token){
   for(let r = 1; r <= S.maxRounds; r++){
     S.round = r;                       // keep S.round in range once the loop ends
-    await playRound();
+    await playRound(token);
     if(r < S.maxRounds){
       showRoundSummary(false);
       await waitForContinue();
+      guard(token);
       $('roundOverlay').classList.add('hidden');
     }
   }
+  gameActive = false;
   showRoundSummary(true);
 }
 
@@ -821,7 +833,7 @@ function deal(){
   return deck;
 }
 
-async function playRound(){
+async function playRound(token){
   S.dealer = (S.dealer + 1) % S.n;
   S.trick = [];
   S.winnerIdx = -1;
@@ -835,6 +847,7 @@ async function playRound(){
   const deck = deal();
   render();
   await sleep(600);
+  guard(token);
 
   // Flip for trump
   if(deck.length > 0){
@@ -846,9 +859,11 @@ async function playRound(){
       await sleep(500);
       if(S.dealer === HUMAN){
         S.trump = await askHumanTrump();
+        guard(token);
       } else {
         S.trump = aiChooseTrump(S.dealer);
         await sleep(500);
+        guard(token);
       }
       S.message = `Trump is ${SUIT_SYM[S.trump]} ${SUIT_NAME[S.trump]}`;
     } else if(flip.kind === 'jester'){
@@ -864,6 +879,7 @@ async function playRound(){
   }
   render();
   await sleep(800);
+  guard(token);
 
   // Bidding, starting left of dealer
   S.phase = 'bidding';
@@ -874,26 +890,31 @@ async function playRound(){
       S.message = `${S.players[p].name} is bidding…`;
       render();
       await sleep(560);
+      guard(token);
       S.players[p].bid = aiBid(p);
     } else {
       S.message = 'Place your bid';
-      S.players[p].bid = await waitForHumanBid();
+      const bid = await waitForHumanBid();
+      guard(token);
+      S.players[p].bid = bid;
     }
     S.message = `${S.players[p].name} bids ${S.players[p].bid}`;
     render();
     await sleep(340);
+    guard(token);
   }
   const total = S.players.reduce((s,p) => s + p.bid, 0);
   S.message = `Bids total ${total} for ${S.round} trick${S.round>1?'s':''}` +
               (total > S.round ? ' — someone is going down.' : total < S.round ? ' — tricks going spare.' : ' — perfectly balanced.');
   render();
   await sleep(900);
+  guard(token);
 
   // Tricks
   let leader = (S.dealer + 1) % S.n;
   S.phase = 'playing';
   for(S.trickNum = 1; S.trickNum <= S.round; S.trickNum++){
-    leader = await playTrick(leader);
+    leader = await playTrick(leader, token);
   }
 
   // Scoring
@@ -906,7 +927,7 @@ async function playRound(){
   render();
 }
 
-async function playTrick(leader){
+async function playTrick(leader, token){
   S.trick = [];
   S.winnerIdx = -1;
   render();
@@ -919,11 +940,13 @@ async function playTrick(leader){
       S.message = `${S.players[p].name} is thinking…`;
       render();
       await sleep(520 + Math.random()*320);
+      guard(token);
       card = aiPlay(p);
     } else {
       S.message = 'Your turn';
       render();
       card = await waitForHumanCard();
+      guard(token);
     }
     const hand = S.players[p].hand;
     hand.splice(hand.findIndex(c => c.id === card.id), 1);
@@ -931,6 +954,7 @@ async function playTrick(leader){
     S.message = `${S.players[p].name} plays ${cardName(card)}`;
     render();
     await sleep(240);
+    guard(token);
   }
 
   S.phase = 'trickend';
@@ -945,6 +969,7 @@ async function playTrick(leader){
   S.message = `${w.name} takes the trick with ${cardName(S.trick[wIdx].card)}${status}`;
   render();
   await sleep(1350);
+  guard(token);
 
   S.trick = [];
   S.winnerIdx = -1;
@@ -955,6 +980,7 @@ async function playTrick(leader){
 
 function askHumanTrump(){
   return new Promise(resolve => {
+    trumpResolver = resolve;
     const pick = $('suitPick');
     pick.innerHTML = '';
     for(const s of SUITS){
@@ -962,8 +988,11 @@ function askHumanTrump(){
       b.className = 'suitbtn ' + SUIT_COLOR[s];
       b.innerHTML = `${SUIT_SYM[s]}<small>${SUIT_NAME[s]}</small>`;
       b.addEventListener('click', () => {
+        if(!trumpResolver) return;
+        const r = trumpResolver;
+        trumpResolver = null;
         $('trumpOverlay').classList.add('hidden');
-        resolve(s);
+        r(s);
       });
       pick.appendChild(b);
     }
@@ -1055,31 +1084,47 @@ function roundsForConfig(){
   return fullRounds;
 }
 
+// Invalidate any in-flight round loop and release whatever it is waiting on, so it
+// resumes, hits its next guard() and unwinds.
+function abandonGame(){
+  gameToken++;
+  gameActive = false;
+  const pending = [humanCardResolver, humanBidResolver, continueResolver, trumpResolver];
+  humanCardResolver = humanBidResolver = continueResolver = trumpResolver = null;
+  for(const r of pending) if(r) r(null);
+}
+
 function startGame(){
+  abandonGame();
   $('setupOverlay').classList.add('hidden');
   $('roundOverlay').classList.add('hidden');
   $('gameOverlay').classList.add('hidden');
+  $('trumpOverlay').classList.add('hidden');
   $('bidbar').classList.add('hidden');
-  humanCardResolver = humanBidResolver = continueResolver = null;
+  const token = ++gameToken;
+  gameActive = true;
   newGame(cfgPlayers, roundsForConfig(), cfgHook);
   render();
-  playGame();
+  playGame(token).catch(e => { if(e !== ABORT) throw e; });
+}
+
+function openSetup(){
+  $('roundOverlay').classList.add('hidden');
+  $('gameOverlay').classList.add('hidden');
+  $('trumpOverlay').classList.add('hidden');
+  $('btnResume').classList.toggle('hidden', !gameActive);
+  buildSetup();
+  $('setupOverlay').classList.remove('hidden');
 }
 
 /* ============================ Wiring ============================ */
 $('btnStart').addEventListener('click', startGame);
-$('btnPlayAgain').addEventListener('click', () => {
-  $('gameOverlay').classList.add('hidden');
-  $('setupOverlay').classList.remove('hidden');
-  buildSetup();
-});
+$('btnPlayAgain').addEventListener('click', openSetup);
+$('btnResume').addEventListener('click', () => $('setupOverlay').classList.add('hidden'));
 $('btnNextRound').addEventListener('click', () => {
   if(continueResolver){ const r = continueResolver; continueResolver = null; r(); }
 });
-$('btnNew').addEventListener('click', () => {
-  if(S && S.round > 0 && S.round <= S.maxRounds && !confirm('Abandon this game and start a new one?')) return;
-  location.reload();
-});
+$('btnNew').addEventListener('click', openSetup);
 $('btnRules').addEventListener('click', () => $('rulesOverlay').classList.remove('hidden'));
 $('btnRules2').addEventListener('click', () => $('rulesOverlay').classList.remove('hidden'));
 $('btnCloseRules').addEventListener('click', () => $('rulesOverlay').classList.add('hidden'));
