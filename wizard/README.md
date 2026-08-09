@@ -37,3 +37,16 @@ plus 10 per trick**; miss it for **−10 per trick** over or under.
   right about **57%** of rounds at 4 players.
 - `?fast=1` shortens all animation delays; `window.wizardDebug` exposes the rules
   functions and live state. Both exist for the automated browser tests.
+
+## Strategy guide
+
+The in-game help (the **Rules** button) has two tabs: the rules, and a **Strategy** tab
+covering bid counting, reading the bid total, play technique for making versus ducking
+tricks, when to spend a Jester, and the AI's behavioural tells.
+
+Two figures quoted there were measured rather than asserted:
+
+- The claim that a Jester can only cost you a trick when *you* led it was verified by
+  enumerating all 3,936 trick configurations (2-4 players, every trump setting, Jester at
+  every seat). A Jester won from a non-leading seat zero times.
+- The card-decay table comes from 120,000 simulated deals of the real 60-card deck.

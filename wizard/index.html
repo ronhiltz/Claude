@@ -223,8 +223,24 @@ tr.lead td{color:var(--gold)}
 .suitbtn small{display:block;font-size:11px;margin-top:4px;color:#555}
 .rules{font-size:13px;color:var(--muted);line-height:1.6;max-height:56vh;overflow-y:auto;padding-right:6px}
 .rules h3{color:var(--ink);font-size:14px;margin:14px 0 4px}
+.rules h3:first-child{margin-top:2px}
 .rules ul{margin:4px 0;padding-left:18px}
 .rules li{margin:3px 0}
+.rules b{color:var(--ink)}
+.rules .callout{
+  border-left:3px solid var(--gold);background:rgba(233,196,106,.1);
+  padding:8px 11px;border-radius:0 9px 9px 0;margin:9px 0;color:var(--ink);
+}
+.rules .tablewrap{overflow-x:auto;margin:8px 0}
+.rules table{min-width:0;font-size:12px}
+.rules td{font-variant-numeric:tabular-nums}
+.rules .note{font-size:11.5px;font-style:italic;opacity:.8}
+.tabs{display:flex;gap:6px;margin:2px 0 12px}
+.tab{
+  flex:1;padding:9px 10px;border-radius:11px;font-weight:700;font-size:13px;
+  background:rgba(255,255,255,.06);border:1px solid var(--panel-line);color:var(--muted);
+}
+.tab.sel{background:linear-gradient(180deg,rgba(233,196,106,.28),rgba(233,196,106,.12));border-color:var(--gold);color:#fff}
 .trophy{font-size:40px;text-align:center;margin-bottom:4px}
 .standing{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:rgba(255,255,255,.05);margin-bottom:6px;border:1px solid transparent}
 .standing.first{border-color:var(--gold);background:linear-gradient(90deg,rgba(233,196,106,.22),rgba(233,196,106,.05))}
@@ -340,7 +356,11 @@ tr.lead td{color:var(--gold)}
 <div class="overlay hidden" id="rulesOverlay">
   <div class="modal">
     <h2>How to play Wizard</h2>
-    <div class="rules">
+    <div class="tabs">
+      <button class="tab sel" data-tab="rules">Rules</button>
+      <button class="tab" data-tab="strategy">Strategy</button>
+    </div>
+    <div class="rules" id="tabRules">
       <p>60 cards: the 52 standard cards plus <b>4 Wizards</b> and <b>4 Jesters</b>.</p>
       <h3>Rounds</h3>
       <ul>
@@ -372,6 +392,96 @@ tr.lead td{color:var(--gold)}
         <li>Highest total after the last round wins.</li>
       </ul>
     </div>
+
+    <div class="rules hidden" id="tabStrategy">
+      <h3>Everything follows from the scoring</h3>
+      <p>A made bid of 1 is <b>+30</b>. A bid of 2 that takes only 1 is <b>−10</b>. That 40-point
+      swing, not the size of your bid, is where games are won. <b>When torn between two numbers,
+      bid the lower one.</b></p>
+
+      <h3>Counting your hand</h3>
+      <ul>
+        <li><b>Wizard = 1 trick.</b> Only an earlier Wizard in the same trick beats it, and if you
+        lead it, nothing can.</li>
+        <li><b>Trump Ace or King ≈ 1</b> in small rounds. Long trump (3+) is worth more than its
+        face value — you can ruff once you're void in a side suit.</li>
+        <li><b>Off-suit Aces</b> count in the early rounds and become liabilities in the late ones.</li>
+        <li><b>Jesters = 0, and they shrink your hand.</b> Two Jesters in a 5-card round means you
+        are really playing three cards. Bid it that way.</li>
+      </ul>
+
+      <div class="tablewrap">
+        <table>
+          <tr><th style="text-align:left">Round</th><th>You hold a Wizard</th><th>Your avg. trumps</th><th>Off-suit Ace beatable</th></tr>
+          <tr><td>1</td><td>7%</td><td>0.2</td><td>55%</td></tr>
+          <tr><td>3</td><td>19%</td><td>0.5</td><td>77%</td></tr>
+          <tr><td>5</td><td>30%</td><td>0.9</td><td>83%</td></tr>
+          <tr><td>7</td><td>40%</td><td>1.2</td><td>89%</td></tr>
+          <tr><td>10</td><td>53%</td><td>1.8</td><td>96%</td></tr>
+          <tr><td>15</td><td>70%</td><td>no trump</td><td>99.7%</td></tr>
+        </table>
+      </div>
+      <p class="note">Four players, from 120,000 simulated deals. "Beatable" means at least one
+      opponent holds a Wizard, or is void in that suit with a trump in hand — not that they will
+      use it. An Ace is a trick in round 3 and a liability by round 10.</p>
+
+      <h3>Read the bid total</h3>
+      <p>The table announces it after everyone has bid. <b>Over</b> the trick count means somebody
+      must go down — bid low and let them collide. <b>Under</b> means spare tricks are floating and
+      someone will be stuck with them, so one extra trick is often free.</p>
+
+      <h3>When you still need tricks</h3>
+      <ul>
+        <li>Take them <b>early</b>, while your high cards still work — trumps get exhausted and
+        Aces get ruffed as a round goes on.</li>
+        <li>Lead your long suit to make opponents follow and burn their winners.</li>
+        <li>Last to play and able to win? Win with your <b>cheapest</b> winner.</li>
+      </ul>
+
+      <h3>When you've made your bid</h3>
+      <div class="callout">A card that doesn't beat the table <i>now</i> can never win the trick —
+      later cards only add competition. So on a trick you've already lost, you can shed your most
+      dangerous card completely safely.</div>
+      <p>Strip your Aces early, while there are still lost tricks to dump them on. Wait, and you'll
+      be left holding nothing but winners and forced to take one.</p>
+
+      <h3>The Jester</h3>
+      <div class="callout">A Jester can never lose you a trick you didn't want — unless you
+      <i>led</i> it and every opponent also played one.</div>
+      <p>That makes it your escape hatch. The decision splits on one question:</p>
+      <p><b>On a trick you've already lost:</b> throw the Jester if you still <i>need</i> tricks
+      (keep your winners). Keep the Jester and throw your biggest dangerous card if you
+      <i>don't</i> — you'll want the escape hatch later.</p>
+      <p>Play it when:</p>
+      <ul>
+        <li>You must not win and <b>every other legal card would win</b> — spades led, you hold only
+        the K and Q of spades, and your bid is already full.</li>
+        <li>Your hand has gone all-winners, typically late in a round holding only trumps.</li>
+        <li>You're leading and need no more tricks: you can't take the trick, and it passes suit
+        control to the next player instead of committing your own suit.</li>
+      </ul>
+      <p>Don't play it when:</p>
+      <ul>
+        <li>The trick is already lost and you need tricks — shed your lowest real card instead.</li>
+        <li>You need tricks and are on lead — you're giving away both the lead and the information.</li>
+        <li>A genuinely safe low card does the same job. Spend that, and save the Jester for the
+        trick where nothing else is safe.</li>
+      </ul>
+
+      <h3>Reading your opponents</h3>
+      <ul>
+        <li>An opponent <b>leading a Jester has already made its bid</b>. Leading a Wizard or a big
+        card means it still needs tricks.</li>
+        <li>One that needs tricks <b>hoards</b> — it throws its lowest card when it can't win, so it
+        is still holding strength late.</li>
+        <li>One that has made its bid <b>strips its Aces early</b>. So bust it <b>early</b>: lead low
+        into a suit it must follow while its hand is still fat. By the last tricks it holds only
+        junk and can't be forced.</li>
+        <li>None of them count cards or notice that you're void. Once all four Wizards are gone,
+        your Aces are safer than they know.</li>
+      </ul>
+    </div>
+
     <button class="primary" id="btnCloseRules">Got it</button>
   </div>
 </div>
@@ -1125,8 +1235,16 @@ $('btnNextRound').addEventListener('click', () => {
   if(continueResolver){ const r = continueResolver; continueResolver = null; r(); }
 });
 $('btnNew').addEventListener('click', openSetup);
-$('btnRules').addEventListener('click', () => $('rulesOverlay').classList.remove('hidden'));
-$('btnRules2').addEventListener('click', () => $('rulesOverlay').classList.remove('hidden'));
+function showHelp(tab){
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('sel', b.dataset.tab === tab));
+  $('tabRules').classList.toggle('hidden', tab !== 'rules');
+  $('tabStrategy').classList.toggle('hidden', tab !== 'strategy');
+  $('tabRules').scrollTop = $('tabStrategy').scrollTop = 0;
+  $('rulesOverlay').classList.remove('hidden');
+}
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => showHelp(b.dataset.tab)));
+$('btnRules').addEventListener('click', () => showHelp('rules'));
+$('btnRules2').addEventListener('click', () => showHelp('rules'));
 $('btnCloseRules').addEventListener('click', () => $('rulesOverlay').classList.add('hidden'));
 
 buildSetup();
