@@ -82,7 +82,7 @@ button.btn.ghost{background:none}
 }
 .tag .strip{background:var(--red);color:#fff;font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:5px 28px 5px 10px;display:flex;justify-content:space-between}
 .tag .body{padding:10px 12px 12px;flex:1;display:flex;flex-direction:column;gap:6px}
-.tag .name{font-weight:800;font-size:15px;line-height:1.25;padding-right:14px}
+.tag .name{font-weight:800;font-size:15px;line-height:1.25}
 .tag .sku{font-size:11px;color:#6b6450;font-family:ui-monospace,Menlo,monospace}
 .tag .price{font-weight:900;font-size:40px;line-height:1;letter-spacing:-1px;margin-top:4px}
 .tag .price sup{font-size:18px;vertical-align:top;position:relative;top:4px;margin-right:1px}
@@ -95,6 +95,22 @@ button.btn.ghost{background:none}
 .tag .foot .watch{background:var(--tag-ink);color:var(--tag);border:0}
 .tag .foot .watch.on{background:var(--green);color:#fff}
 .tag .foot a{border:1.5px solid var(--tag-ink);color:var(--tag-ink)}
+.tag.hot{box-shadow:0 0 0 3px var(--red),var(--shadow)}
+.burst{
+  position:absolute;top:30px;right:8px;z-index:2;width:62px;height:62px;border-radius:50%;
+  background:var(--red);color:#fff;font-weight:900;font-size:16px;line-height:1.05;
+  display:flex;align-items:center;justify-content:center;text-align:center;transform:rotate(12deg);
+  box-shadow:0 3px 8px rgba(0,0,0,.35);border:2px dashed rgba(255,255,255,.6);
+}
+.burst.mild{width:auto;height:auto;border-radius:4px;padding:3px 6px;font-size:13px;background:var(--tag-ink);color:var(--tag);border:0;transform:none}
+.tag .name{padding-right:70px}
+.tag .was{font-size:13px;color:#6b6450}
+.tag .ends{font-size:12px;font-weight:700;color:#6b6450}
+.tag .ends.soon{color:var(--red)}
+.tag .src{font-size:11px;color:#6b6450}
+.tag .src a{color:#6b6450}
+.banner{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--red);border-radius:8px;padding:10px 12px;font-size:14px;margin-bottom:12px}
+.chip.hot-chip.on{background:var(--red);border-color:var(--red);color:#fff}
 .barcode{height:16px;background:repeating-linear-gradient(90deg,#1b1b1b 0 2px,transparent 2px 3px,#1b1b1b 3px 4px,transparent 4px 7px,#1b1b1b 7px 10px,transparent 10px 11px);opacity:.7;width:110px}
 
 /* offers */
@@ -172,9 +188,17 @@ button.btn.ghost{background:none}
 <main>
   <!-- DEALS -->
   <section id="deals" class="active">
+    <div class="banner" id="hotBanner"></div>
     <div class="controls">
       <div class="chips" id="storeChips"></div>
+    </div>
+    <div class="controls">
+      <div class="chips" id="catChips"></div>
+    </div>
+    <div class="controls">
+      <button class="chip hot-chip" id="hotToggle">🔥 Over 30% off</button>
       <select id="sort" aria-label="Sort deals">
+        <option value="pct">Biggest % off</option>
         <option value="price-asc">Price: low → high</option>
         <option value="price-desc">Price: high → low</option>
         <option value="name">Name</option>
@@ -197,7 +221,8 @@ button.btn.ghost{background:none}
   <section id="watch">
     <h2>Add a tool</h2>
     <form class="add" id="addForm" autocomplete="off">
-      <input id="addName" placeholder="Milwaukee tool (e.g. M18 FUEL impact 2953-20)" required>
+      <input id="addName" list="catalog" placeholder="Milwaukee tool — start typing (wrench, ratchet, battery, PACKOUT…)" required>
+      <datalist id="catalog"></datalist>
       <input id="addTarget" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Target $" required>
       <input id="addPrice" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Seen at $ (opt.)">
       <button class="btn primary" type="submit">Add</button>
@@ -216,39 +241,140 @@ button.btn.ghost{background:none}
 <script>
 /* =====================================================================
    DEAL DATA — snapshot. To refresh, edit this block (or ask Claude to).
-   price: number, or null if not captured. ends: "YYYY-MM-DD" (inclusive).
+   price: deal price (null if not captured).
+   was:   regular/retail price the source quoted (null if unknown).
+   pct:   % off as reported by the source, used when `was` is unknown.
+   minPct: source only said "N% or more off".
+   ends:  "YYYY-MM-DD" inclusive, or null if open-ended/unknown.
+   src:   [name, url, date reported]
    ===================================================================== */
 const SNAPSHOT_DATE = "2026-10-06";
+const HOT_PCT = 30;   // deals saving MORE than this % are highlighted
+
+const CATS = ["Impact Wrenches","Ratchets","Batteries","Chargers","PACKOUT","Drills & Drivers","Saws & Cutting","Sanding","Outdoor","Lighting"];
+
+const SRC = {
+  slash:  ["SlashGear", "https://www.slashgear.com/2277495/milwaukee-tools-with-deep-discounts-october-2026/", "2026-10"],
+  drive:  ["The Drive", "https://www.thedrive.com/news/half-price-milwaukee-tools-and-free-batteries-the-home-depot-is-desperate-to-beat-amazon-prime-day-deals", "2026-10"],
+  tgd:    ["ToolGuyd", "https://toolguyd.com/home-depot-milwaukee-prime-day-tool-deals-100626/", "2026-10-06"],
+  hdsc:   ["Home Depot", "https://www.homedepot.com/p/Milwaukee-M18-18V-Dual-Bay-Simultaneous-Super-Charger-48-59-1815/326257074", "2026-10"],
+  hdpk:   ["Home Depot", "https://www.homedepot.com/p/Milwaukee-PACKOUT-22-in-Rolling-Modular-Tool-Box-48-22-8426/303005865", "2026-10"],
+  drivepk:["The Drive", "https://www.thedrive.com/news/the-best-milwaukee-packout-deals-at-the-home-depot-right-now", "2026-10"],
+  bdd:    ["Prime Big Deal Days roundup", "https://www.fccj.org/best-amazon-prime-big-deal-days-power-tool-deals-2026-sale/", "2026-10-06"],
+  mj:     ["Men's Journal", "https://www.mensjournal.com/shopping/milwaukee-m18-redlithium-xc-5ah-batteries-mp-october-walmart-deals-2026", "2026-10"],
+  w731b:  ["731 Woodworks", "https://www.731woodworks.com/tool-deals/milwaukee-m18-xc50-battery-2-pack-deal-10126", "2026-10-01"],
+  w731iw: ["731 Woodworks", "https://www.731woodworks.com/tool-deals/milwaukee-m18-impact-wrench-deal-10226", "2026-10-02"],
+  w731po: ["731 Woodworks", "https://www.731woodworks.com/tool-deals/milwaukee-packout-compact-organizer-save-15-now-3397", "2026-10"],
+};
 
 const DEALS = [
-  { id:"hd-m18f-hammer", store:"Home Depot", name:"M18 FUEL Hammer Drill/Driver", price:229,
-    bundle:"w/ M18 5.0Ah battery", category:"Drilling", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
-  { id:"hd-hackzall", store:"Home Depot", name:"M18 Hackzall Reciprocating Saw", price:199,
-    bundle:"w/ M18 5.0Ah battery", category:"Cutting", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
-  { id:"hd-compact-blower", store:"Home Depot", name:"M18 Compact Blower", price:129,
-    bundle:"w/ M18 2.0Ah battery", category:"Outdoor", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
-  { id:"hd-multitool", store:"Home Depot", name:"M18 Oscillating Multi-Tool", price:null,
-    bundle:"Battery bundle", category:"Cutting", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
-  { id:"hd-ros", store:"Home Depot", name:"M18 Random Orbit Sander", price:null,
-    bundle:"Battery bundle", category:"Sanding", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  // ---- Impact wrenches ----
+  { id:"acme-2967", store:"Acme Tools", cat:"Impact Wrenches", name:"M18 FUEL 1/2\" High Torque Impact Wrench", model:"2967-20",
+    price:299, was:488, bundle:"+ FREE XC5.0 Resistant battery ($189 value)", ends:"2026-11-01", src:SRC.w731iw,
+    note:"Savings = free battery value vs. tool + battery bought separately." },
+  { id:"amz-m18-htiw", store:"Amazon", cat:"Impact Wrenches", name:"M18 FUEL High Torque Impact Wrench", model:null,
+    price:340, was:540, bundle:"Prime Big Deal Days", ends:"2026-10-07", src:SRC.bdd },
+  // ---- Ratchets ----
+  { id:"hd-m12-ratchet-kit", store:"Home Depot", cat:"Ratchets", name:"M12 3/8\" Cordless Ratchet Kit", model:null,
+    price:189, was:459, bundle:"w/ 2× M12 5.0Ah batteries + charger", ends:null, src:SRC.drive },
+  { id:"amz-m12f-hs-ratchet", store:"Amazon", cat:"Ratchets", name:"M12 FUEL 3/8\" High Speed Ratchet Kit", model:null,
+    price:229, was:309, bundle:"w/ 2 batteries + charger", ends:"2026-10-07", src:SRC.bdd },
+  // ---- Batteries ----
+  { id:"amz-m18-xc6", store:"Amazon", cat:"Batteries", name:"M18 REDLITHIUM XC 6.0Ah Battery", model:null,
+    price:91, was:null, pct:54, bundle:"Single battery", ends:"2026-10-07", src:SRC.bdd },
+  { id:"wmt-m18-ho5-2pk", store:"Walmart", cat:"Batteries", name:"M18 High Output 5.0Ah Battery 2-Pack", model:null,
+    price:134, was:null, pct:50, bundle:"2 batteries", ends:"2026-10-11", src:SRC.mj },
+  { id:"toolnut-1850r-2pk", store:"The Tool Nut", cat:"Batteries", name:"M18 REDLITHIUM XC5.0 Resistant Battery 2-Pack", model:"48-11-1850R",
+    price:218, was:418, bundle:"2 oil/solvent resistant batteries", ends:null, src:SRC.w731b },
+  // ---- Chargers ----
+  { id:"hd-super-charger", store:"Home Depot", cat:"Chargers", name:"M18 Dual Bay Simultaneous Super Charger", model:"48-59-1815",
+    price:229, was:249, bundle:"Charger only", ends:null, src:SRC.hdsc },
+  // ---- PACKOUT ----
+  { id:"hd-pk-rolling", store:"Home Depot", cat:"PACKOUT", name:"PACKOUT 22\" Rolling Modular Tool Box", model:"48-22-8426",
+    price:139, was:null, pct:26, bundle:"Special Buy", ends:null, src:SRC.drivepk },
+  { id:"hd-pk-backpack", store:"Home Depot", cat:"PACKOUT", name:"PACKOUT 15\" Tool Backpack", model:null,
+    price:null, was:null, pct:29, bundle:"Special Buy", ends:null, src:SRC.drivepk },
+  { id:"hd-pk-3drawer", store:"Home Depot", cat:"PACKOUT", name:"PACKOUT 22\" Modular 3-Drawer Tool Box", model:null,
+    price:null, was:null, pct:16, bundle:"Special Buy", ends:null, src:SRC.drivepk },
+  { id:"acme-pk-organizer", store:"Acme Tools", cat:"PACKOUT", name:"PACKOUT Compact Organizer", model:null,
+    price:33.97, was:null, pct:15, bundle:"Code DEALDAYS", ends:"2026-10-06", src:SRC.w731po },
+  // ---- Drills / saws / sanding / outdoor / lighting (Home Depot battery bundles) ----
+  { id:"hd-m18f-hammer", store:"Home Depot", cat:"Drills & Drivers", name:"M18 FUEL Hammer Drill/Driver", model:null,
+    price:229, was:null, minPct:30, bundle:"w/ M18 5.0Ah battery", ends:null, src:SRC.slash },
+  { id:"hd-hackzall", store:"Home Depot", cat:"Saws & Cutting", name:"M18 FUEL Hackzall Reciprocating Saw", model:null,
+    price:199, was:null, minPct:30, bundle:"w/ M18 5.0Ah battery", ends:null, src:SRC.slash },
+  { id:"hd-multitool", store:"Home Depot", cat:"Saws & Cutting", name:"M18 FUEL Oscillating Multi-Tool", model:null,
+    price:249, was:null, minPct:30, bundle:"w/ M18 5.0Ah battery", ends:null, src:SRC.slash },
+  { id:"hd-m12f-cutoff", store:"Home Depot", cat:"Saws & Cutting", name:"M12 FUEL 3\" Cut-Off Saw Kit", model:null,
+    price:189, was:null, pct:57, bundle:"w/ 2× XC5.0 batteries + charger", ends:null, src:SRC.drive },
+  { id:"hd-ros", store:"Home Depot", cat:"Sanding", name:"M18 Random Orbit Sander", model:null,
+    price:229, was:null, minPct:30, bundle:"w/ M18 5.0Ah battery", ends:null, src:SRC.slash },
+  { id:"hd-compact-blower", store:"Home Depot", cat:"Outdoor", name:"M18 Compact Blower", model:null,
+    price:129, was:null, minPct:30, bundle:"w/ M18 2.0Ah battery", ends:null, src:SRC.slash },
+  { id:"hd-pole-saw", store:"Home Depot", cat:"Outdoor", name:"M18 FUEL 10\" Pole Saw", model:null,
+    price:549, was:null, bundle:"w/ battery", ends:null, src:SRC.tgd },
+  { id:"hd-rover-flood", store:"Home Depot", cat:"Lighting", name:"M18 ROVER Three-Panel Flood Light", model:null,
+    price:179, was:null, pct:42, bundle:"w/ battery", ends:null, src:SRC.drive },
 ];
 
 const OFFERS = [
-  { store:"Home Depot", title:"Free M18 tool promotions",
-    detail:"Select M18 kits & batteries qualify for a free tool. Some individual deals run until Oct 25.",
-    ends:"2026-10-25", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
-  { store:"Home Depot", title:"Free M12 tool promotions",
-    detail:"Select M12 purchases qualify for a free tool. Some individual deals run until Oct 25.",
-    ends:"2026-10-25", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { store:"Home Depot", title:"Free M18 tool or battery",
+    detail:"Buy a qualifying M18 tool/kit, get a free M18 tool or battery (e.g. XC5.0, $169 value).",
+    ends:"2026-10-25", url:"https://www.slashgear.com/2277715/home-depot-free-milwaukee-tool-battery-offer-fall-2026/" },
+  { store:"Home Depot", title:"Free M12 tool (up to $199 value)",
+    detail:"e.g. M12 High Output 5.0Ah 2-pack kit ($199) + choice of free M12 tool: ratchet, cut-off saw, circular saw, multi-tool, vac, pump, pruning saw.",
+    ends:"2026-10-25", url:"https://www.homedepot.com/p/Milwaukee-M12-12V-Lithium-Ion-XC-High-Output-5-Ah-Battery-2-Pack-48-11-2450S/326840029" },
   { store:"Acme Tools", title:"Free M12 bare tool",
     detail:"Buy an M12 battery 2-pack, get a select M12 bare tool free.",
     ends:"2026-10-25", url:"https://www.acmetools.com/deals/?brands=milwaukee" },
+  { store:"Acme Tools", title:"Free M18 HIGH OUTPUT XC6.0 battery",
+    detail:"Buy a select M18 bare tool, get an HO XC6.0 battery free.",
+    ends:"2026-11-01", url:"https://www.acmetools.com/free-battery-deals/?brands=milwaukee" },
+  { store:"Acme Tools", title:"Free XC5.0 battery w/ impact wrench",
+    detail:"Buy a select M18 FUEL impact wrench bare tool (2967-20, 2855-20, 2854-20…), get an XC5.0 Resistant battery ($189) free.",
+    ends:"2026-11-01", url:"https://www.acmetools.com/free-battery-deals/?brands=milwaukee" },
+  { store:"Ace Hardware", title:"Ace Rewards Days",
+    detail:"Up to $250 off select Milwaukee tools; members get 15% off $49+ online with code ARDOCT26, plus 2× points.",
+    ends:"2026-10-07", url:"https://www.acehardware.com/ace-rewards-days" },
 ];
 
 const CALENDAR = [
+  { date:"2026-10-07", title:"Prime Big Deal Days & Ace Rewards Days end", note:"Amazon · Ace Hardware" },
+  { date:"2026-10-09", title:"MyLowe's Rewards Member Week", note:"Lowe's · through Oct 15" },
+  { date:"2026-10-11", title:"Walmart Deals ends", note:"M18 HO 5.0Ah 2-pack $134" },
   { date:"2026-10-25", title:"Free M12/M18 promos end", note:"Home Depot & Acme" },
+  { date:"2026-11-01", title:"Acme free-battery promos end", note:"HO XC6.0 / XC5.0 Resistant" },
   { date:"2026-11-27", title:"Black Friday", note:"Biggest Milwaukee kit & battery bundles of the year" },
   { date:"2026-11-30", title:"Cyber Monday", note:"Online-only bundles" },
+];
+
+/* Common Milwaukee tools — suggestions for the watchlist "Add a tool" box. */
+const CATALOG = [
+  ["Impact Wrenches","M18 FUEL 1/2\" High Torque Impact Wrench 2967-20"],
+  ["Impact Wrenches","M18 FUEL 1/2\" Mid-Torque Impact Wrench 2962-20"],
+  ["Impact Wrenches","M18 FUEL 1/2\" Compact Impact Wrench 2855-20"],
+  ["Impact Wrenches","M18 FUEL 3/8\" Compact Impact Wrench 2854-20"],
+  ["Ratchets","M12 FUEL 3/8\" Ratchet 2557-20"],
+  ["Ratchets","M12 FUEL 3/8\" High Speed Ratchet 2567-20"],
+  ["Ratchets","M12 FUEL 1/2\" Ratchet 2558-20"],
+  ["Ratchets","M12 3/8\" Ratchet 2457-20"],
+  ["Batteries","M18 REDLITHIUM XC5.0 Battery 48-11-1850"],
+  ["Batteries","M18 REDLITHIUM HIGH OUTPUT XC6.0 Battery 48-11-1865"],
+  ["Batteries","M18 REDLITHIUM HIGH OUTPUT XC8.0 Battery 48-11-1880"],
+  ["Batteries","M18 REDLITHIUM FORGE XC8.0 Battery"],
+  ["Batteries","M12 REDLITHIUM HIGH OUTPUT XC5.0 Battery 48-11-2450"],
+  ["Chargers","M18 & M12 Super Charger 48-59-1811"],
+  ["Chargers","M18 Dual Bay Simultaneous Super Charger 48-59-1815"],
+  ["Chargers","M18 PACKOUT Six Bay Rapid Charger 48-59-1809"],
+  ["PACKOUT","PACKOUT 22\" Rolling Modular Tool Box 48-22-8426"],
+  ["PACKOUT","PACKOUT 38\" Rolling Modular Tool Chest 48-22-8428"],
+  ["PACKOUT","PACKOUT 19\" Rolling Drawer Tool Box 48-22-8420"],
+  ["PACKOUT","PACKOUT Large Tool Box 48-22-8425"],
+  ["PACKOUT","PACKOUT XL Tool Box 48-22-8429"],
+  ["Drills & Drivers","M18 FUEL 1/2\" Hammer Drill/Driver 2904-20"],
+  ["Drills & Drivers","M18 FUEL 1/4\" Hex Impact Driver 2953-20"],
+  ["Drills & Drivers","M12 FUEL 1/4\" Hex Impact Driver 3453-20"],
+  ["Saws & Cutting","M18 FUEL Hackzall 2719-20"],
 ];
 /* ===================================================================== */
 
@@ -285,39 +411,60 @@ document.querySelectorAll("nav button").forEach(b => b.addEventListener("click",
 }));
 
 /* ---------- deals ---------- */
-let storeFilter = "All";
-function renderChips(){
-  const stores = ["All", ...new Set(DEALS.map(d => d.store))];
-  $("#storeChips").innerHTML = stores.map(s =>
-    `<button class="chip ${s===storeFilter?"on":""}" data-store="${esc(s)}">${esc(s)}</button>`).join("");
-  $("#storeChips").querySelectorAll(".chip").forEach(c => c.onclick = () => { storeFilter = c.dataset.store; renderChips(); renderDeals(); });
+let storeFilter = "All", catFilter = "All", hotOnly = false;
+// Percent off: from was/price, else the source's reported pct (or its "N%+" floor).
+const pctOff = d => d.was && d.price != null ? (1 - d.price / d.was) * 100 : (d.pct ?? d.minPct ?? null);
+const isHot = d => d.minPct != null ? d.minPct >= HOT_PCT : (pctOff(d) ?? 0) > HOT_PCT;
+const expired = d => d.ends && daysUntil(d.ends) < 0;
+const pctLabel = d => { const p = pctOff(d); return p == null ? "" : (d.minPct != null ? p + "%+" : Math.round(p) + "%"); };
+
+function chipRow(el, items, cur, set){
+  el.innerHTML = items.map(s => `<button class="chip ${s===cur?"on":""}" data-v="${esc(s)}">${esc(s)}</button>`).join("");
+  el.querySelectorAll(".chip").forEach(c => c.onclick = () => { set(c.dataset.v); renderChips(); renderDeals(); });
 }
-function priceHTML(p){
-  if (p == null) return `<div class="price na">Price not captured — check store</div>`;
-  const [d, c] = Number(p).toFixed(2).split(".");
-  return `<div class="price"><sup>$</sup>${d}${c !== "00" ? `<sup>${c}</sup>` : ""}</div>`;
+function renderChips(){
+  const live = DEALS.filter(d => !expired(d));
+  chipRow($("#storeChips"), ["All", ...new Set(live.map(d => d.store))], storeFilter, v => storeFilter = v);
+  chipRow($("#catChips"), ["All", ...CATS.filter(c => live.some(d => d.cat === c))], catFilter, v => catFilter = v);
+  $("#hotToggle").classList.toggle("on", hotOnly);
+}
+function priceHTML(d){
+  if (d.price == null) return `<div class="price na">Price not captured — check store</div>`;
+  const [n, c] = Number(d.price).toFixed(2).split(".");
+  return `<div class="price"><sup>$</sup>${n}${c !== "00" ? `<sup>${c}</sup>` : ""}</div>` +
+    (d.was ? `<div class="was">Reg. <s>${money(d.was)}</s> · save ${money(d.was - d.price)}</div>` : "");
 }
 function renderDeals(){
   const q = $("#q").value.trim().toLowerCase();
   const sort = $("#sort").value;
-  let list = DEALS.filter(d => (storeFilter === "All" || d.store === storeFilter) &&
-    (!q || (d.name + " " + d.bundle + " " + d.category).toLowerCase().includes(q)));
+  const live = DEALS.filter(d => !expired(d));
+  const hotCount = live.filter(isHot).length;
+  $("#hotBanner").innerHTML = `🔥 <b>${hotCount}</b> of ${live.length} live deals save more than ${HOT_PCT}% off retail`;
+  let list = live.filter(d => (storeFilter === "All" || d.store === storeFilter) &&
+    (catFilter === "All" || d.cat === catFilter) && (!hotOnly || isHot(d)) &&
+    (!q || [d.name, d.model, d.bundle, d.cat, d.store].join(" ").toLowerCase().includes(q)));
   const big = sort === "price-desc" ? -Infinity : Infinity;
   list.sort((a, b) => sort === "name" ? a.name.localeCompare(b.name)
+    : sort === "pct" ? (isHot(b) - isHot(a)) || (pctOff(b) ?? -1) - (pctOff(a) ?? -1)
     : sort === "price-desc" ? (b.price ?? big) - (a.price ?? big)
     : (a.price ?? big) - (b.price ?? big));
   $("#dealGrid").innerHTML = list.length ? list.map(d => {
-    const on = watch.some(w => w.dealId === d.id);
-    return `<article class="tag">
-      <div class="strip"><span>${esc(d.store)}</span><span>${esc(d.category)}</span></div>
+    const on = watch.some(w => w.dealId === d.id), hot = isHot(d), pl = pctLabel(d);
+    const n = d.ends ? daysUntil(d.ends) : null;
+    return `<article class="tag ${hot?"hot":""}">
+      ${pl ? `<div class="burst ${hot?"":"mild"}">${hot?"SAVE<br>":"−"}${pl}</div>` : ""}
+      <div class="strip"><span>${esc(d.store)}</span><span>${esc(d.cat)}</span></div>
       <div class="body">
         <div class="name">Milwaukee ${esc(d.name)}</div>
-        ${priceHTML(d.price)}
+        ${d.model ? `<div class="sku">Model ${esc(d.model)}</div>` : ""}
+        ${priceHTML(d)}
         <span class="bundle">${esc(d.bundle)}</span>
+        ${d.note ? `<div class="sku">${esc(d.note)}</div>` : ""}
+        ${n != null ? `<div class="ends ${n<=3?"soon":""}">${n===0?"Ends today":`Ends in ${n} day${n===1?"":"s"}`} (${esc(d.ends)})</div>` : ""}
         <div class="barcode"></div>
+        <div class="src">Source: <a href="${esc(d.src[1])}" target="_blank" rel="noopener">${esc(d.src[0])}</a> · ${esc(d.src[2])}</div>
         <div class="foot">
           <button class="watch ${on?"on":""}" data-id="${d.id}">${on ? "✓ Watching" : "Watch price"}</button>
-          <a href="${esc(d.url)}" target="_blank" rel="noopener">View</a>
         </div>
       </div>
     </article>`;
@@ -333,7 +480,7 @@ function watchDeal(id){
   const target = parseFloat(t);
   if (!(target > 0)) { toast("Enter a valid target price"); return; }
   watch.push({
-    id: "w" + Date.now().toString(36), dealId: id, name: "Milwaukee " + d.name,
+    id: "w" + Date.now().toString(36), dealId: id, name: "Milwaukee " + d.name + (d.model ? " " + d.model : ""), cat: d.cat,
     note: d.store + " · " + d.bundle, target,
     history: d.price != null ? [{ date: SNAPSHOT_DATE, price: d.price, where: d.store }] : [],
   });
@@ -448,8 +595,9 @@ $("#addForm").addEventListener("submit", e => {
   let name = $("#addName").value.trim();
   const target = parseFloat($("#addTarget").value), price = parseFloat($("#addPrice").value);
   if (!name || !(target > 0)) return;
+  const hit = CATALOG.find(([, n]) => name.toLowerCase().includes(n.toLowerCase()));
   if (!/milwaukee/i.test(name)) name = "Milwaukee " + name;
-  watch.push({ id: "w" + Date.now().toString(36), name, note: "", target,
+  watch.push({ id: "w" + Date.now().toString(36), name, note: hit ? hit[0] : "", cat: hit ? hit[0] : null, target,
     history: price > 0 ? [{ date: isoToday(), price, where: "" }] : [] });
   e.target.reset(); saveWatch(); renderWatch(); toast("Added to watchlist");
 });
@@ -478,8 +626,10 @@ $("#importFile").onchange = async e => {
 
 /* ---------- init ---------- */
 $("#snap").textContent = "Deal snapshot: " + parseDay(SNAPSHOT_DATE).toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" });
-$("#dealNote").innerHTML = `Prices are a snapshot from ${esc(SNAPSHOT_DATE)} — a static page can't pull live retailer prices. Ask Claude to refresh the <code>DEALS</code> block in <code>tooldeals/index.html</code>.`;
+$("#dealNote").innerHTML = `Prices are a snapshot gathered ${esc(SNAPSHOT_DATE)} from deal reports (see each tag's source) — a static page can't pull live retailer prices, and in-store prices vary. Confirm at the retailer before buying. “30%+” means the source only said “30% or more off.” Expired deals are hidden automatically. Ask Claude to refresh the <code>DEALS</code> block in <code>tooldeals/index.html</code>.`;
+$("#catalog").innerHTML = CATALOG.map(([c, n]) => `<option value="${esc(n)}">${esc(c)}</option>`).join("");
 $("#sort").onchange = renderDeals;
+$("#hotToggle").onclick = () => { hotOnly = !hotOnly; renderChips(); renderDeals(); };
 $("#q").oninput = renderDeals;
 renderChips(); renderDeals(); renderOffers(); renderWatch();
 </script>
