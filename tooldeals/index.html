@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b1b1d">
+<title>ToolDeals — Milwaukee Deal Tracker</title>
+<style>
+:root{
+  --bg:#141416;
+  --bg2:#1d1d21;
+  --panel:#24242a;
+  --line:rgba(255,255,255,.1);
+  --ink:#f3f3f5;
+  --muted:#9d9da8;
+  --red:#d7262e;
+  --red-dim:#8f1a1f;
+  --tag:#fff6c9;
+  --tag-ink:#1b1b1b;
+  --green:#2fb36d;
+  --amber:#f2a93b;
+  --shadow:0 8px 24px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+header{
+  position:sticky;top:0;z-index:10;
+  background:linear-gradient(180deg,#1b1b1d,#141416);
+  border-bottom:3px solid var(--red);
+  padding:12px 16px 0;
+}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.5px;text-transform:uppercase}
+.brand h1 span{color:var(--red)}
+.brand .snap{font-size:12px;color:var(--muted)}
+nav{display:flex;gap:4px;margin-top:10px;overflow-x:auto}
+nav button{
+  flex:1;min-width:max-content;background:none;border:0;color:var(--muted);
+  font-family:inherit;font-weight:600;font-size:14px;padding:10px 12px;border-radius:8px 8px 0 0;cursor:pointer;
+}
+nav button.active{background:var(--red);color:#fff}
+nav .count{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:rgba(255,255,255,.18);font-size:11px}
+main{max-width:1000px;margin:0 auto;padding:16px}
+section{display:none}
+section.active{display:block}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:22px 0 10px}
+h2:first-child{margin-top:4px}
+.note{font-size:12px;color:var(--muted);line-height:1.5}
+a{color:#ff8a8f}
+
+/* controls */
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+select,input,button.btn{
+  font:inherit;font-size:14px;color:var(--ink);background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:9px 10px;
+}
+select,input{min-width:0;max-width:100%}
+input::placeholder{color:#6f6f78}
+button.btn{cursor:pointer;font-weight:600}
+button.btn.primary{background:var(--red);border-color:var(--red)}
+button.btn.small{padding:6px 9px;font-size:12px}
+button.btn.ghost{background:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:13px;cursor:pointer;color:var(--ink)}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* shelf price tags */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.tag{
+  position:relative;background:var(--tag);color:var(--tag-ink);border-radius:6px;
+  box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;
+}
+.tag::before{ /* shelf-edge hole */
+  content:"";position:absolute;top:10px;right:10px;width:10px;height:10px;border-radius:50%;
+  background:var(--bg);box-shadow:inset 0 1px 2px rgba(0,0,0,.5);
+}
+.tag .strip{background:var(--red);color:#fff;font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:5px 28px 5px 10px;display:flex;justify-content:space-between}
+.tag .body{padding:10px 12px 12px;flex:1;display:flex;flex-direction:column;gap:6px}
+.tag .name{font-weight:800;font-size:15px;line-height:1.25;padding-right:14px}
+.tag .sku{font-size:11px;color:#6b6450;font-family:ui-monospace,Menlo,monospace}
+.tag .price{font-weight:900;font-size:40px;line-height:1;letter-spacing:-1px;margin-top:4px}
+.tag .price sup{font-size:18px;vertical-align:top;position:relative;top:4px;margin-right:1px}
+.tag .price.na{font-size:16px;font-weight:700;letter-spacing:0;color:#6b6450}
+.tag .bundle{display:inline-block;align-self:flex-start;background:var(--tag-ink);color:var(--tag);font-size:12px;font-weight:700;padding:3px 7px;border-radius:3px}
+.tag .foot{display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed #c9bd88}
+.tag .foot button,.tag .foot a{
+  flex:1;text-align:center;font-family:inherit;font-weight:700;font-size:13px;padding:8px;border-radius:5px;cursor:pointer;text-decoration:none;
+}
+.tag .foot .watch{background:var(--tag-ink);color:var(--tag);border:0}
+.tag .foot .watch.on{background:var(--green);color:#fff}
+.tag .foot a{border:1.5px solid var(--tag-ink);color:var(--tag-ink)}
+.barcode{height:16px;background:repeating-linear-gradient(90deg,#1b1b1b 0 2px,transparent 2px 3px,#1b1b1b 3px 4px,transparent 4px 7px,#1b1b1b 7px 10px,transparent 10px 11px);opacity:.7;width:110px}
+
+/* offers */
+.offers{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.offer{display:flex;gap:14px;align-items:center}
+.days{
+  flex:none;width:72px;height:72px;border-radius:12px;background:var(--red);color:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;
+}
+.days b{font-size:28px;line-height:1}
+.days small{font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:.85}
+.days.soon{background:var(--amber);color:#1b1b1b}
+.days.over{background:#44444c;color:#bbb}
+.offer h3{margin:0 0 4px;font-size:15px}
+.offer p{margin:0;font-size:13px;color:var(--muted);line-height:1.4}
+.store{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#ff8a8f}
+.cal{list-style:none;margin:0;padding:0}
+.cal li{display:flex;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.cal li:last-child{border:0}
+.cal .date{flex:none;width:52px;text-align:center;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.cal .date .m{background:var(--red);font-size:10px;font-weight:800;text-transform:uppercase;padding:2px 0}
+.cal .date .d{font-size:20px;font-weight:900;padding:2px 0}
+.cal .what{flex:1}
+.cal .what b{display:block;font-size:14px}
+.cal .what span{font-size:12px;color:var(--muted)}
+.cal .until{font-size:12px;color:var(--muted);white-space:nowrap}
+
+/* watchlist */
+.add{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:8px}
+@media (max-width:600px){.add{grid-template-columns:1fr 1fr}.add input:first-child{grid-column:1/-1}.add button{grid-column:1/-1}}
+.watch-item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.watch-item.hit{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset}
+.wi-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.wi-top h3{margin:0;font-size:16px}
+.wi-top .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.flag{display:inline-block;background:var(--green);color:#fff;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:3px 8px;border-radius:4px;margin-bottom:6px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.stat{background:var(--bg2);border-radius:8px;padding:8px 10px}
+.stat small{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.stat b{font-size:18px}
+.stat b.good{color:var(--green)}
+.chart{width:100%;height:90px;display:block;background:var(--bg2);border-radius:8px}
+.log{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.log input{flex:1;min-width:90px}
+.history{margin-top:8px;font-size:12px;color:var(--muted)}
+.history summary{cursor:pointer}
+.history table{width:100%;border-collapse:collapse;margin-top:6px}
+.history td{padding:4px 2px;border-bottom:1px solid var(--line)}
+.history td:last-child{text-align:right}
+.empty{text-align:center;color:var(--muted);padding:30px 10px;border:1px dashed var(--line);border-radius:12px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.x{background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:0 4px}
+#toast{
+  position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(120px);
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;font-size:14px;
+  transition:transform .25s;z-index:50;box-shadow:var(--shadow);
+}
+#toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Tool<span>Deals</span></h1>
+    <div class="snap" id="snap"></div>
+  </div>
+  <nav>
+    <button data-tab="deals" class="active">Deals</button>
+    <button data-tab="offers">Free Offers</button>
+    <button data-tab="watch">Watchlist<span class="count" id="watchCount">0</span></button>
+  </nav>
+</header>
+
+<main>
+  <!-- DEALS -->
+  <section id="deals" class="active">
+    <div class="controls">
+      <div class="chips" id="storeChips"></div>
+      <select id="sort" aria-label="Sort deals">
+        <option value="price-asc">Price: low → high</option>
+        <option value="price-desc">Price: high → low</option>
+        <option value="name">Name</option>
+      </select>
+      <input id="q" type="search" placeholder="Search deals…" style="flex:1;min-width:140px">
+    </div>
+    <div class="grid" id="dealGrid"></div>
+    <p class="note" id="dealNote"></p>
+  </section>
+
+  <!-- OFFERS -->
+  <section id="offers">
+    <h2>Free tool &amp; battery offers</h2>
+    <div class="offers" id="offerList"></div>
+    <h2>Upcoming sales</h2>
+    <div class="card"><ul class="cal" id="calendar"></ul></div>
+  </section>
+
+  <!-- WATCHLIST -->
+  <section id="watch">
+    <h2>Add a tool</h2>
+    <form class="add" id="addForm" autocomplete="off">
+      <input id="addName" placeholder="Milwaukee tool (e.g. M18 FUEL impact 2953-20)" required>
+      <input id="addTarget" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Target $" required>
+      <input id="addPrice" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Seen at $ (opt.)">
+      <button class="btn primary" type="submit">Add</button>
+    </form>
+    <p class="note">Prices you log stay on this device (browser storage). Use Export to back up or move your list.</p>
+    <div id="watchList"></div>
+    <div class="toolbar">
+      <button class="btn small" id="exportBtn">Export watchlist</button>
+      <button class="btn small" id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   DEAL DATA — snapshot. To refresh, edit this block (or ask Claude to).
+   price: number, or null if not captured. ends: "YYYY-MM-DD" (inclusive).
+   ===================================================================== */
+const SNAPSHOT_DATE = "2026-10-06";
+
+const DEALS = [
+  { id:"hd-m18f-hammer", store:"Home Depot", name:"M18 FUEL Hammer Drill/Driver", price:229,
+    bundle:"w/ M18 5.0Ah battery", category:"Drilling", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { id:"hd-hackzall", store:"Home Depot", name:"M18 Hackzall Reciprocating Saw", price:199,
+    bundle:"w/ M18 5.0Ah battery", category:"Cutting", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { id:"hd-compact-blower", store:"Home Depot", name:"M18 Compact Blower", price:129,
+    bundle:"w/ M18 2.0Ah battery", category:"Outdoor", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { id:"hd-multitool", store:"Home Depot", name:"M18 Oscillating Multi-Tool", price:null,
+    bundle:"Battery bundle", category:"Cutting", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { id:"hd-ros", store:"Home Depot", name:"M18 Random Orbit Sander", price:null,
+    bundle:"Battery bundle", category:"Sanding", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+];
+
+const OFFERS = [
+  { store:"Home Depot", title:"Free M18 tool promotions",
+    detail:"Select M18 kits & batteries qualify for a free tool. Some individual deals run until Oct 25.",
+    ends:"2026-10-25", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { store:"Home Depot", title:"Free M12 tool promotions",
+    detail:"Select M12 purchases qualify for a free tool. Some individual deals run until Oct 25.",
+    ends:"2026-10-25", url:"https://www.homedepot.com/b/Milwaukee/N-5yc1vZzv" },
+  { store:"Acme Tools", title:"Free M12 bare tool",
+    detail:"Buy an M12 battery 2-pack, get a select M12 bare tool free.",
+    ends:"2026-10-25", url:"https://www.acmetools.com/deals/?brands=milwaukee" },
+];
+
+const CALENDAR = [
+  { date:"2026-10-25", title:"Free M12/M18 promos end", note:"Home Depot & Acme" },
+  { date:"2026-11-27", title:"Black Friday", note:"Biggest Milwaukee kit & battery bundles of the year" },
+  { date:"2026-11-30", title:"Cyber Monday", note:"Online-only bundles" },
+];
+/* ===================================================================== */
+
+const STORE_KEY = "tooldeals.watchlist.v1";
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = n => n == null ? "—" : "$" + Number(n).toFixed(2).replace(/\.00$/, "");
+const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
+const parseDay = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const daysUntil = s => Math.round((parseDay(s) - today()) / 864e5);
+const isoToday = () => { const d = today(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+/* ---------- storage ---------- */
+function loadWatch(){
+  try { const v = JSON.parse(localStorage.getItem(STORE_KEY)); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+}
+function saveWatch(){
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(watch)); } catch {}
+  $("#watchCount").textContent = watch.length;
+}
+let watch = loadWatch();
+
+/* ---------- tabs ---------- */
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll("main section").forEach(s => s.classList.toggle("active", s.id === b.dataset.tab));
+  window.scrollTo(0, 0);
+}));
+
+/* ---------- deals ---------- */
+let storeFilter = "All";
+function renderChips(){
+  const stores = ["All", ...new Set(DEALS.map(d => d.store))];
+  $("#storeChips").innerHTML = stores.map(s =>
+    `<button class="chip ${s===storeFilter?"on":""}" data-store="${esc(s)}">${esc(s)}</button>`).join("");
+  $("#storeChips").querySelectorAll(".chip").forEach(c => c.onclick = () => { storeFilter = c.dataset.store; renderChips(); renderDeals(); });
+}
+function priceHTML(p){
+  if (p == null) return `<div class="price na">Price not captured — check store</div>`;
+  const [d, c] = Number(p).toFixed(2).split(".");
+  return `<div class="price"><sup>$</sup>${d}${c !== "00" ? `<sup>${c}</sup>` : ""}</div>`;
+}
+function renderDeals(){
+  const q = $("#q").value.trim().toLowerCase();
+  const sort = $("#sort").value;
+  let list = DEALS.filter(d => (storeFilter === "All" || d.store === storeFilter) &&
+    (!q || (d.name + " " + d.bundle + " " + d.category).toLowerCase().includes(q)));
+  const big = sort === "price-desc" ? -Infinity : Infinity;
+  list.sort((a, b) => sort === "name" ? a.name.localeCompare(b.name)
+    : sort === "price-desc" ? (b.price ?? big) - (a.price ?? big)
+    : (a.price ?? big) - (b.price ?? big));
+  $("#dealGrid").innerHTML = list.length ? list.map(d => {
+    const on = watch.some(w => w.dealId === d.id);
+    return `<article class="tag">
+      <div class="strip"><span>${esc(d.store)}</span><span>${esc(d.category)}</span></div>
+      <div class="body">
+        <div class="name">Milwaukee ${esc(d.name)}</div>
+        ${priceHTML(d.price)}
+        <span class="bundle">${esc(d.bundle)}</span>
+        <div class="barcode"></div>
+        <div class="foot">
+          <button class="watch ${on?"on":""}" data-id="${d.id}">${on ? "✓ Watching" : "Watch price"}</button>
+          <a href="${esc(d.url)}" target="_blank" rel="noopener">View</a>
+        </div>
+      </div>
+    </article>`;
+  }).join("") : `<div class="empty">No deals match.</div>`;
+  $("#dealGrid").querySelectorAll(".watch").forEach(b => b.onclick = () => watchDeal(b.dataset.id));
+}
+function watchDeal(id){
+  const d = DEALS.find(x => x.id === id);
+  if (watch.some(w => w.dealId === id)) { toast("Already on your watchlist"); return; }
+  const suggested = d.price != null ? Math.round(d.price * 0.9) : "";
+  const t = prompt(`Target price for ${d.name}?`, suggested);
+  if (t === null) return;
+  const target = parseFloat(t);
+  if (!(target > 0)) { toast("Enter a valid target price"); return; }
+  watch.push({
+    id: "w" + Date.now().toString(36), dealId: id, name: "Milwaukee " + d.name,
+    note: d.store + " · " + d.bundle, target,
+    history: d.price != null ? [{ date: SNAPSHOT_DATE, price: d.price, where: d.store }] : [],
+  });
+  saveWatch(); renderDeals(); renderWatch(); toast("Added to watchlist");
+}
+
+/* ---------- offers & calendar ---------- */
+function renderOffers(){
+  $("#offerList").innerHTML = OFFERS.map(o => {
+    const n = daysUntil(o.ends);
+    const cls = n < 0 ? "over" : n <= 7 ? "soon" : "";
+    const big = n < 0 ? "—" : n;
+    const lab = n < 0 ? "ended" : n === 1 ? "day left" : n === 0 ? "last day" : "days left";
+    return `<div class="card offer">
+      <div class="days ${cls}"><b>${n===0?"!":big}</b><small>${lab}</small></div>
+      <div>
+        <div class="store">${esc(o.store)}</div>
+        <h3>${esc(o.title)}</h3>
+        <p>${esc(o.detail)} <a href="${esc(o.url)}" target="_blank" rel="noopener">Details</a></p>
+      </div>
+    </div>`;
+  }).join("");
+  const mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  $("#calendar").innerHTML = CALENDAR.map(e => {
+    const d = parseDay(e.date), n = daysUntil(e.date);
+    return `<li style="${n<0?"opacity:.45":""}">
+      <div class="date"><div class="m">${mon[d.getMonth()]}</div><div class="d">${d.getDate()}</div></div>
+      <div class="what"><b>${esc(e.title)}</b><span>${esc(e.note)}</span></div>
+      <div class="until">${n < 0 ? "past" : n === 0 ? "today" : "in " + n + "d"}</div>
+    </li>`;
+  }).join("");
+}
+
+/* ---------- watchlist ---------- */
+const latest = w => w.history.length ? w.history[w.history.length - 1].price : null;
+const lowest = w => w.history.length ? Math.min(...w.history.map(h => h.price)) : null;
+const isHit = w => latest(w) != null && latest(w) <= w.target;
+
+function chartSVG(w){
+  const H = 90, W = 320, pad = 10;
+  const pts = w.history.map(h => h.price);
+  if (!pts.length) return `<svg class="chart" viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2+4}" fill="#6f6f78" font-size="12" text-anchor="middle">Log a price to start the chart</text></svg>`;
+  const lo = Math.min(...pts, w.target), hi = Math.max(...pts, w.target);
+  const span = hi - lo || 1;
+  const x = i => pts.length === 1 ? W/2 : pad + i * (W - 2*pad) / (pts.length - 1);
+  const y = v => H - pad - (v - lo) / span * (H - 2*pad);
+  const ty = y(w.target), lowV = Math.min(...pts), lowI = pts.lastIndexOf(lowV);
+  const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <line x1="0" x2="${W}" y1="${ty}" y2="${ty}" stroke="#2fb36d" stroke-dasharray="4 4" stroke-width="1"/>
+    <text x="${W-4}" y="${ty-4}" fill="#2fb36d" font-size="10" text-anchor="end">target ${money(w.target)}</text>
+    <path d="${line}" fill="none" stroke="#d7262e" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    ${pts.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="${i===lowI?4.5:2.5}" fill="${i===lowI?"#f2a93b":"#d7262e"}"/>`).join("")}
+  </svg>`;
+}
+
+function renderWatch(){
+  $("#watchCount").textContent = watch.length;
+  if (!watch.length) {
+    $("#watchList").innerHTML = `<div class="empty">Your watchlist is empty.<br>Tap <b>Watch price</b> on a deal, or add a tool above.</div>`;
+    return;
+  }
+  const sorted = [...watch].sort((a, b) => (isHit(b) - isHit(a)) || a.name.localeCompare(b.name));
+  $("#watchList").innerHTML = sorted.map(w => {
+    const cur = latest(w), low = lowest(w), hit = isHit(w);
+    return `<div class="watch-item ${hit?"hit":""}" data-id="${w.id}">
+      ${hit ? `<div class="flag">✓ At or below target</div>` : ""}
+      <div class="wi-top">
+        <div><h3>${esc(w.name)}</h3>${w.note ? `<div class="sub">${esc(w.note)}</div>` : ""}</div>
+        <button class="x" data-act="del" title="Remove">×</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><small>Latest</small><b class="${hit?"good":""}">${money(cur)}</b></div>
+        <div class="stat"><small>Lowest</small><b>${money(low)}</b></div>
+        <div class="stat"><small>Target</small><b>${money(w.target)}</b> <button class="btn small ghost" data-act="target" title="Edit target">✎</button></div>
+      </div>
+      ${chartSVG(w)}
+      <div class="log">
+        <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="New price $" data-f="price">
+        <input placeholder="Where (opt.)" data-f="where">
+        <button class="btn small primary" data-act="log">Log price</button>
+      </div>
+      ${w.history.length ? `<details class="history"><summary>${w.history.length} logged price${w.history.length>1?"s":""}</summary>
+        <table>${[...w.history].reverse().map(h => `<tr><td>${esc(h.date)}</td><td>${esc(h.where||"")}</td><td>${money(h.price)}</td></tr>`).join("")}</table>
+      </details>` : ""}
+    </div>`;
+  }).join("");
+}
+
+$("#watchList").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if (!btn) return;
+  const card = btn.closest(".watch-item"), w = watch.find(x => x.id === card.dataset.id);
+  if (!w) return;
+  if (btn.dataset.act === "del") {
+    if (!confirm(`Remove ${w.name} from your watchlist?`)) return;
+    watch = watch.filter(x => x !== w);
+  } else if (btn.dataset.act === "target") {
+    const t = parseFloat(prompt("New target price", w.target));
+    if (!(t > 0)) return;
+    w.target = t;
+  } else if (btn.dataset.act === "log") {
+    const p = parseFloat(card.querySelector('[data-f="price"]').value);
+    if (!(p > 0)) { toast("Enter a price"); return; }
+    w.history.push({ date: isoToday(), price: p, where: card.querySelector('[data-f="where"]').value.trim() });
+    if (p <= w.target) toast("🎯 Target hit!"); else toast("Price logged");
+  }
+  saveWatch(); renderWatch(); renderDeals();
+});
+
+$("#addForm").addEventListener("submit", e => {
+  e.preventDefault();
+  let name = $("#addName").value.trim();
+  const target = parseFloat($("#addTarget").value), price = parseFloat($("#addPrice").value);
+  if (!name || !(target > 0)) return;
+  if (!/milwaukee/i.test(name)) name = "Milwaukee " + name;
+  watch.push({ id: "w" + Date.now().toString(36), name, note: "", target,
+    history: price > 0 ? [{ date: isoToday(), price, where: "" }] : [] });
+  e.target.reset(); saveWatch(); renderWatch(); toast("Added to watchlist");
+});
+
+/* ---------- export / import ---------- */
+$("#exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify({ version: 1, exported: isoToday(), watch }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `tooldeals-watchlist-${isoToday()}.json`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$("#importBtn").onclick = () => $("#importFile").click();
+$("#importFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const list = Array.isArray(data) ? data : data.watch;
+    if (!Array.isArray(list)) throw 0;
+    const ok = list.filter(w => w && typeof w.name === "string" && w.target > 0 && Array.isArray(w.history));
+    const ids = new Set(watch.map(w => w.id));
+    ok.forEach(w => { if (!ids.has(w.id)) watch.push(w); });
+    saveWatch(); renderWatch(); renderDeals(); toast(`Imported ${ok.length} item${ok.length===1?"":"s"}`);
+  } catch { toast("Couldn't read that file"); }
+  e.target.value = "";
+};
+
+/* ---------- init ---------- */
+$("#snap").textContent = "Deal snapshot: " + parseDay(SNAPSHOT_DATE).toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" });
+$("#dealNote").innerHTML = `Prices are a snapshot from ${esc(SNAPSHOT_DATE)} — a static page can't pull live retailer prices. Ask Claude to refresh the <code>DEALS</code> block in <code>tooldeals/index.html</code>.`;
+$("#sort").onchange = renderDeals;
+$("#q").oninput = renderDeals;
+renderChips(); renderDeals(); renderOffers(); renderWatch();
+</script>
+</body>
+</html>
