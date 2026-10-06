@@ -12,8 +12,12 @@ Single-file, offline-friendly web app (`index.html`) for tracking Milwaukee tool
 
 Deal, offer, calendar and watchlist-suggestion data live in the clearly marked `DEALS` / `OFFERS` / `CALENDAR` / `CATALOG` block at the top of the `<script>` in `index.html`, with a `SNAPSHOT_DATE`. A static page can't pull live retailer prices, so refresh that block by hand (or ask Claude to). Each deal records `was` (retail price) or the source's reported `pct` off; the highlight threshold is `HOT_PCT` (30). Deals with `price: null` show "Price not captured — check store".
 
-The watchlist is stored in the browser's `localStorage` on each device. Use **Export** / **Import** to back it up or move it between devices.
+The watchlist is stored in the browser's `localStorage` on each device. Use **Back up watchlist** (copies a text backup and, when opened as a local file, downloads it) and **Restore from file / pasted text** to move it between devices.
 
 ## Run
 
 Open `index.html` in any browser (works on iPhone — add to Home Screen for an app-like view).
+
+## Live page
+
+Published as a private claude.ai Artifact (see the link in the Claude Code session). The published copy is `index.html` with the outer `<!DOCTYPE>/<html>/<head>/<body>` tags removed, since the Artifact host adds its own.

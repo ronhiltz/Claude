@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1b1b1d">
-<title>ToolDeals — Milwaukee Deal Tracker</title>
+<title>ToolDeals</title>
 <style>
 :root{
+  color-scheme:dark;
   --bg:#141416;
   --bg2:#1d1d21;
   --panel:#24242a;
@@ -30,7 +31,7 @@ body{
   padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
 }
 header{
-  position:sticky;top:0;z-index:10;
+  position:sticky;top:env(safe-area-inset-top,0px);z-index:10;
   background:linear-gradient(180deg,#1b1b1d,#141416);
   border-bottom:3px solid var(--red);
   padding:12px 16px 0;
@@ -163,6 +164,11 @@ button.btn.ghost{background:none}
 .history td:last-child{text-align:right}
 .empty{text-align:center;color:var(--muted);padding:30px 10px;border:1px dashed var(--line);border-radius:12px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+textarea{width:100%;font:12px ui-monospace,Menlo,monospace;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px}
+.confirm{display:flex;gap:6px;align-items:center;font-size:13px;flex-wrap:wrap;justify-content:flex-end}
+.tedit{display:flex;gap:4px;margin-top:2px}
+.tedit input{width:100%;padding:5px 6px}
+[hidden]{display:none!important}
 .x{background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:0 4px}
 #toast{
   position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(120px);
@@ -230,9 +236,14 @@ button.btn.ghost{background:none}
     <p class="note">Prices you log stay on this device (browser storage). Use Export to back up or move your list.</p>
     <div id="watchList"></div>
     <div class="toolbar">
-      <button class="btn small" id="exportBtn">Export watchlist</button>
-      <button class="btn small" id="importBtn">Import</button>
+      <button class="btn small" id="exportBtn">Back up watchlist</button>
+      <button class="btn small" id="importBtn">Restore from file</button>
+      <button class="btn small" id="pasteBtn">Restore from pasted text</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+    <div id="backupWrap" hidden>
+      <p class="note" id="backupMsg"></p>
+      <textarea id="backupBox" rows="6" spellcheck="false" aria-label="Watchlist backup text"></textarea>
     </div>
   </section>
 </main>
@@ -398,7 +409,7 @@ function loadWatch(){
   catch { return []; }
 }
 function saveWatch(){
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(watch)); } catch {}
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(watch, (k, v) => k.startsWith("_") ? undefined : v)); } catch {}
   $("#watchCount").textContent = watch.length;
 }
 let watch = loadWatch();
@@ -474,17 +485,14 @@ function renderDeals(){
 function watchDeal(id){
   const d = DEALS.find(x => x.id === id);
   if (watch.some(w => w.dealId === id)) { toast("Already on your watchlist"); return; }
-  const suggested = d.price != null ? Math.round(d.price * 0.9) : "";
-  const t = prompt(`Target price for ${d.name}?`, suggested);
-  if (t === null) return;
-  const target = parseFloat(t);
-  if (!(target > 0)) { toast("Enter a valid target price"); return; }
+  // Start with a target 10% under today's price; it's editable on the Watchlist tab.
+  const target = d.price != null ? Math.round(d.price * 0.9) : null;
   watch.push({
     id: "w" + Date.now().toString(36), dealId: id, name: "Milwaukee " + d.name + (d.model ? " " + d.model : ""), cat: d.cat,
     note: d.store + " · " + d.bundle, target,
     history: d.price != null ? [{ date: SNAPSHOT_DATE, price: d.price, where: d.store }] : [],
   });
-  saveWatch(); renderDeals(); renderWatch(); toast("Added to watchlist");
+  saveWatch(); renderDeals(); renderWatch(); toast(target ? `Watching · target ${money(target)}` : "Watching · set a target in Watchlist");
 }
 
 /* ---------- offers & calendar ---------- */
@@ -517,21 +525,22 @@ function renderOffers(){
 /* ---------- watchlist ---------- */
 const latest = w => w.history.length ? w.history[w.history.length - 1].price : null;
 const lowest = w => w.history.length ? Math.min(...w.history.map(h => h.price)) : null;
-const isHit = w => latest(w) != null && latest(w) <= w.target;
+const isHit = w => w.target != null && latest(w) != null && latest(w) <= w.target;
 
 function chartSVG(w){
   const H = 90, W = 320, pad = 10;
   const pts = w.history.map(h => h.price);
   if (!pts.length) return `<svg class="chart" viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2+4}" fill="#6f6f78" font-size="12" text-anchor="middle">Log a price to start the chart</text></svg>`;
-  const lo = Math.min(...pts, w.target), hi = Math.max(...pts, w.target);
+  const tg = w.target != null ? [w.target] : [];
+  const lo = Math.min(...pts, ...tg), hi = Math.max(...pts, ...tg);
   const span = hi - lo || 1;
   const x = i => pts.length === 1 ? W/2 : pad + i * (W - 2*pad) / (pts.length - 1);
   const y = v => H - pad - (v - lo) / span * (H - 2*pad);
-  const ty = y(w.target), lowV = Math.min(...pts), lowI = pts.lastIndexOf(lowV);
+  const ty = w.target != null ? y(w.target) : null, lowV = Math.min(...pts), lowI = pts.lastIndexOf(lowV);
   const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    <line x1="0" x2="${W}" y1="${ty}" y2="${ty}" stroke="#2fb36d" stroke-dasharray="4 4" stroke-width="1"/>
-    <text x="${W-4}" y="${ty-4}" fill="#2fb36d" font-size="10" text-anchor="end">target ${money(w.target)}</text>
+    ${ty != null ? `<line x1="0" x2="${W}" y1="${ty}" y2="${ty}" stroke="#2fb36d" stroke-dasharray="4 4" stroke-width="1"/>
+    <text x="${W-4}" y="${ty-4}" fill="#2fb36d" font-size="10" text-anchor="end">target ${money(w.target)}</text>` : ""}
     <path d="${line}" fill="none" stroke="#d7262e" stroke-width="2" vector-effect="non-scaling-stroke"/>
     ${pts.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="${i===lowI?4.5:2.5}" fill="${i===lowI?"#f2a93b":"#d7262e"}"/>`).join("")}
   </svg>`;
@@ -550,12 +559,15 @@ function renderWatch(){
       ${hit ? `<div class="flag">✓ At or below target</div>` : ""}
       <div class="wi-top">
         <div><h3>${esc(w.name)}</h3>${w.note ? `<div class="sub">${esc(w.note)}</div>` : ""}</div>
-        <button class="x" data-act="del" title="Remove">×</button>
+        ${w._confirm ? `<span class="confirm">Remove? <button class="btn small primary" data-act="del-yes">Remove</button> <button class="btn small" data-act="del-no">Keep</button></span>`
+          : `<button class="x" data-act="del" title="Remove" aria-label="Remove">×</button>`}
       </div>
       <div class="stats">
         <div class="stat"><small>Latest</small><b class="${hit?"good":""}">${money(cur)}</b></div>
         <div class="stat"><small>Lowest</small><b>${money(low)}</b></div>
-        <div class="stat"><small>Target</small><b>${money(w.target)}</b> <button class="btn small ghost" data-act="target" title="Edit target">✎</button></div>
+        <div class="stat"><small>Target</small>${w._edit
+          ? `<span class="tedit"><input type="number" inputmode="decimal" step="0.01" min="0" value="${w.target ?? ""}" data-f="target" aria-label="Target price"><button class="btn small primary" data-act="target-save">Save</button></span>`
+          : `<b>${money(w.target)}</b> <button class="btn small ghost" data-act="target" title="Edit target" aria-label="Edit target">✎</button>`}</div>
       </div>
       ${chartSVG(w)}
       <div class="log">
@@ -574,18 +586,20 @@ $("#watchList").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if (!btn) return;
   const card = btn.closest(".watch-item"), w = watch.find(x => x.id === card.dataset.id);
   if (!w) return;
-  if (btn.dataset.act === "del") {
-    if (!confirm(`Remove ${w.name} from your watchlist?`)) return;
+  const act = btn.dataset.act;
+  if (act === "del" || act === "del-no") { w._confirm = act === "del"; renderWatch(); return; }
+  if (act === "target") { w._edit = true; renderWatch(); card.ownerDocument.querySelector(`[data-id="${w.id}"] [data-f="target"]`)?.focus(); return; }
+  if (act === "del-yes") {
     watch = watch.filter(x => x !== w);
-  } else if (btn.dataset.act === "target") {
-    const t = parseFloat(prompt("New target price", w.target));
-    if (!(t > 0)) return;
-    w.target = t;
+  } else if (act === "target-save") {
+    const t = parseFloat(card.querySelector('[data-f="target"]').value);
+    if (!(t > 0)) { toast("Enter a target price above $0"); return; }
+    w.target = t; delete w._edit;
   } else if (btn.dataset.act === "log") {
     const p = parseFloat(card.querySelector('[data-f="price"]').value);
     if (!(p > 0)) { toast("Enter a price"); return; }
     w.history.push({ date: isoToday(), price: p, where: card.querySelector('[data-f="where"]').value.trim() });
-    if (p <= w.target) toast("🎯 Target hit!"); else toast("Price logged");
+    if (w.target != null && p <= w.target) toast("🎯 Target hit!"); else toast("Price logged");
   }
   saveWatch(); renderWatch(); renderDeals();
 });
@@ -603,25 +617,47 @@ $("#addForm").addEventListener("submit", e => {
 });
 
 /* ---------- export / import ---------- */
+const backupJSON = () => JSON.stringify({ version: 1, exported: isoToday(), watch }, (k, v) => k.startsWith("_") ? undefined : v, 2);
+function showBackup(msg, text){
+  $("#backupWrap").hidden = false; $("#backupMsg").textContent = msg; $("#backupBox").value = text;
+}
+// Copies the backup to the clipboard and shows it as text; also tries a file download (works when opened as a local file).
 $("#exportBtn").onclick = () => {
-  const blob = new Blob([JSON.stringify({ version: 1, exported: isoToday(), watch }, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = `tooldeals-watchlist-${isoToday()}.json`;
-  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-};
-$("#importBtn").onclick = () => $("#importFile").click();
-$("#importFile").onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
+  const json = backupJSON();
+  showBackup("Your backup is below. Save this text somewhere safe; paste it back with “Restore from pasted text”.", json);
+  $("#backupBox").select();
   try {
-    const data = JSON.parse(await f.text());
+    navigator.clipboard.writeText(json).then(() => toast("Backup copied to clipboard"), () => {});
+  } catch {}
+  try {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    a.download = `tooldeals-watchlist-${isoToday()}.json`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch {}
+};
+function restore(text){
+  try {
+    const data = JSON.parse(text);
     const list = Array.isArray(data) ? data : data.watch;
     if (!Array.isArray(list)) throw 0;
-    const ok = list.filter(w => w && typeof w.name === "string" && w.target > 0 && Array.isArray(w.history));
+    const ok = list.filter(w => w && typeof w.name === "string" && (w.target == null || w.target > 0) && Array.isArray(w.history));
     const ids = new Set(watch.map(w => w.id));
     ok.forEach(w => { if (!ids.has(w.id)) watch.push(w); });
-    saveWatch(); renderWatch(); renderDeals(); toast(`Imported ${ok.length} item${ok.length===1?"":"s"}`);
-  } catch { toast("Couldn't read that file"); }
+    saveWatch(); renderWatch(); renderDeals(); toast(`Restored ${ok.length} item${ok.length===1?"":"s"}`);
+  } catch { toast("That isn't a ToolDeals backup"); }
+}
+$("#importBtn").onclick = () => $("#importFile").click();
+$("#importFile").onchange = async e => {
+  const f = e.target.files[0]; if (f) restore(await f.text());
   e.target.value = "";
+};
+$("#pasteBtn").onclick = () => {
+  if ($("#backupWrap").hidden || !$("#backupBox").value.trim() || $("#backupMsg").dataset.mode !== "paste") {
+    showBackup("Paste a backup into the box, then tap “Restore from pasted text” again.", "");
+    $("#backupMsg").dataset.mode = "paste"; $("#backupBox").focus(); return;
+  }
+  restore($("#backupBox").value); $("#backupMsg").dataset.mode = "";
 };
 
 /* ---------- init ---------- */
